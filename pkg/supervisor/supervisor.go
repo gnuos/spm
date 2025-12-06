@@ -1,104 +1,118 @@
+// Package supervisor 提供进程监督管理核心功能
+//
+// 本模块负责：
+// - Supervisor 核心结构定义
+// - 进程和项目表管理
+// - 信号处理和生命周期控制
+// - 进程操作（启动、停止、重启、状态查询）
+// - 批量操作和配置重载
+//
+// 依赖：
+// - pkg/config: 配置管理
+// - pkg/logger: 日志记录
+// - pkg/utils: 工具函数
+//
+// 架构说明：
+//
+//	Supervisor 采用表驱动设计，维护两个核心表：
+//	1. ProjectTable：项目表，按项目组织进程
+//	2. ProcTable：进程表，管理所有进程实例
+//
+// 文件组织：
+//   - supervisor.go：核心结构定义
+//   - tables.go：进程表管理
+//   - operations.go：Start/Stop/Restart 操作
+//   - batch.go：批量操作
+//   - daemon.go：Daemon 和 Shutdown
+//   - reload.go：配置重载
+//   - app.go：应用/项目管理
+//
+// 使用示例：
+//
+//	sv := supervisor.NewSupervisor()
+//	sv.Daemon()  // 以守护进程模式运行
+//
+// 创建时间: 2025-12-06
+// 最后修改: 2025-12-06
 package supervisor
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"runtime"
-	"slices"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"spm/pkg/config"
 	"spm/pkg/logger"
 	"spm/pkg/utils"
 
-	"github.com/gnuos/daemon"
 	"go.uber.org/zap"
 )
 
-var daemonCtx *daemon.Context
 var maxCpus = runtime.NumCPU()
 
-func GetDaemon() *daemon.Context {
-	if daemonCtx == nil {
-		daemonCtx = &daemon.Context{
-			PidFileName: config.GetConfig().PidFile,
-			PidFilePerm: 0644,
-			WorkDir:     config.WorkDirFlag,
-			Umask:       027,
-			Args:        os.Args,
-		}
-	}
-
-	return daemonCtx
-}
-
-type ProcTable struct {
-	mu sync.RWMutex
-
-	table map[string]*Process
-}
-
-func (pt *ProcTable) Get(name string) *Process {
-	p, ok := pt.table[name]
-	if ok {
-		return p
-	}
-
-	return nil
-}
-
-func (pt *ProcTable) Add(name string, proc *Process) bool {
-	pt.mu.RLock()
-	defer pt.mu.RUnlock()
-
-	if _, ok := pt.table[name]; ok {
-		return false
-	}
-
-	pt.table[name] = proc
-
-	return true
-}
-
-func (pt *ProcTable) Del(name string) bool {
-	pt.mu.RLock()
-	defer pt.mu.RUnlock()
-
-	p, ok := pt.table[name]
-	if !ok {
-		return false
-	}
-
-	_ = p.logger.Sync()
-
-	delete(pt.table, name)
-
-	return true
-}
-
-func (pt *ProcTable) Iter() map[string]*Process {
-	pt.mu.Lock()
-	defer pt.mu.Unlock()
-
-	return pt.table
-}
-
-// Supervisor 是管理维护进程组的核心
+// Supervisor 是管理维护进程组的核心控制器
+//
+// 职责：
+// - 管理多个项目和进程
+// - 处理进程生命周期（启动、停止、重启）
+// - 监听系统信号并优雅关闭
+// - 提供进程状态查询
+//
+// 线程安全：
+// - 使用 RWMutex 保护内部状态
+// - 所有公开方法都是并发安全的
+//
+// 字段说明：
+//
+//	AfterStart: 启动后回调函数（仅前台模式）
+//	StartedAt: Supervisor 启动时间
+//	Pid: Supervisor 进程 PID
+//	mu: 读写锁，保护内部状态
+//	logger: 日志记录器
+//	projectTable: 项目表，管理所有项目
+//	procTable: 进程表，管理所有进程
 type Supervisor struct {
-	AfterStart func()
-	StartedAt  time.Time
-	Pid        int
+	AfterStart func()    // 启动后回调函数
+	StartedAt  time.Time // 启动时间
+	Pid        int       // Supervisor 进程 PID
 
-	mu           sync.RWMutex
-	logger       *zap.SugaredLogger
-	projectTable *ProjectTable
-	procTable    *ProcTable
+	mu           sync.RWMutex       // 读写锁
+	logger       *zap.SugaredLogger // 日志记录器
+	projectTable *ProjectTable      // 项目表
+	procTable    *ProcTable         // 进程表
 }
 
+// NewSupervisor 创建新的 Supervisor 实例
+//
+// 返回：
+//
+//	*Supervisor: 已初始化的 Supervisor 实例
+//
+// 初始化内容：
+//  1. 注册系统信号监听（SIGINT, SIGTERM, SIGQUIT）
+//  2. 初始化空的项目表和进程表
+//  3. 设置当前时间为启动时间
+//  4. 设置当前进程 PID
+//  5. 初始化日志记录器
+//
+// 注意事项：
+//   - 信号监听会在后台持续运行
+//   - 使用 utils.StopChan 接收终止信号
+//   - 默认 AfterStart 回调为空函数
+//
+// 示例：
+//
+//	sv := NewSupervisor()
+//	defer sv.Shutdown()
+//
+//	// 自定义启动后回调
+//	sv.AfterStart = func() {
+//	    fmt.Println("Supervisor 已启动")
+//	}
+//
+//	sv.Daemon()  // 阻塞运行
 func NewSupervisor() *Supervisor {
 	signal.Notify(utils.StopChan, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
 
@@ -114,389 +128,4 @@ func NewSupervisor() *Supervisor {
 			table: make(map[string]*Process),
 		},
 	}
-}
-
-func (sv *Supervisor) Daemon() {
-	defer func() {
-		if config.ForegroundFlag {
-			_ = os.Remove(config.GetConfig().PidFile)
-		} else {
-			_ = GetDaemon().Release()
-		}
-		_ = os.Remove(config.GetConfig().Socket)
-	}()
-
-	sv.StartedAt = time.Now()
-
-	if config.ForegroundFlag {
-		err := utils.WriteDaemonPid(utils.SupervisorPid)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			os.Exit(1)
-		}
-	} else {
-		d, err := GetDaemon().Reborn()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			_ = GetDaemon().Release()
-			os.Exit(1)
-		}
-
-		if d != nil {
-			sv.Pid = d.Pid
-			return
-		}
-	}
-
-	fmt.Printf("\033[1;33;40mSpm supervisor started at %s\033[0m\n\n", sv.StartedAt.Format(time.RFC3339))
-
-	go StartServer(sv)
-
-	sv.logger.Infof("Spm supervisor PID %d", sv.Pid)
-
-	if config.ForegroundFlag {
-		go sv.AfterStart()
-	}
-
-	sig := <-utils.StopChan
-
-	switch sig {
-	case os.Interrupt, syscall.SIGTERM:
-		utils.FinishChan <- struct{}{}
-		sv.Shutdown()
-	}
-	close(utils.StopChan)
-
-	sv.logger.Info("Supervisor daemon stopped")
-}
-
-func (sv *Supervisor) Shutdown() {
-	_ = sv.StopAll("*")
-
-	pt := sv.procTable.Iter()
-	for _, p := range pt {
-		_ = p.logger.Sync()
-	}
-
-	sv.logger.Info("Shutdown supervisor...")
-}
-
-func (sv *Supervisor) Reload(changed []*Process) []*ProcInfo {
-	sv.logger.Info("Reloading configuration")
-	config.SetConfig(utils.GlobalConfigFile)
-
-	pInfo := make([]*ProcInfo, 0)
-
-	if len(changed) > 0 {
-		for _, p := range changed {
-			pInfo = append(pInfo, &ProcInfo{
-				Pid:     p.Pid,
-				Name:    p.FullName,
-				StartAt: p.StartAt.UnixMilli(),
-				StopAt:  p.StopAt.UnixMilli(),
-				Status:  p.State,
-			})
-		}
-	}
-
-	return pInfo
-}
-
-func (sv *Supervisor) Status(name string) *Process {
-	sv.mu.Lock()
-	defer sv.mu.Unlock()
-
-	p := sv.procTable.Get(name)
-	if p == nil {
-		return nil
-	}
-
-	if p.IsRunning() {
-		appName := strings.Split(name, "::")[0]
-		proj := sv.projectTable.Get(appName)
-		proj.SetState(p.Name, true)
-	}
-
-	return p
-}
-
-func (sv *Supervisor) StatusAll(appName string) (procs []*Process) {
-	procs = make([]*Process, 0)
-	var proj *Project
-	if appName != "*" {
-		proj = sv.projectTable.Get(appName)
-		if proj == nil {
-			return
-		}
-
-		plist := proj.GetProcNames()
-		for _, name := range plist {
-			fullName := fmt.Sprintf("%s::%s", appName, name)
-			p := sv.Status(fullName)
-			if p != nil {
-				procs = append(procs, p)
-			}
-		}
-	} else {
-		pt := sv.procTable.Iter()
-		for name := range pt {
-			p := sv.Status(name)
-			procs = append(procs, p)
-		}
-	}
-
-	return
-}
-
-func (sv *Supervisor) Start(name string) *Process {
-	sv.mu.Lock()
-	defer sv.mu.Unlock()
-
-	p := sv.procTable.Get(name)
-	if p == nil {
-		return nil
-	}
-
-	appName := strings.Split(name, "::")[0]
-	proj := sv.projectTable.Get(appName)
-
-	if p.IsRunning() {
-		p.logger.Warnf("%s already running with PID %d", p.FullName, p.Pid)
-
-		proj.SetState(p.Name, true)
-		return p
-	}
-
-	state := p.Start()
-	proj.SetState(p.Name, state)
-
-	if state {
-		return p
-	} else {
-		return nil
-	}
-}
-
-func (sv *Supervisor) StartAll(appName string) (procs []*Process) {
-	procs = make([]*Process, 0)
-
-	var proj *Project
-	if appName != "*" {
-		proj = sv.projectTable.Get(appName)
-		if proj == nil {
-			return
-		}
-
-		plist := proj.GetProcNames()
-		for _, name := range plist {
-			fullName := fmt.Sprintf("%s::%s", appName, name)
-			p := sv.Start(fullName)
-			if p != nil {
-				procs = append(procs, p)
-			}
-		}
-	} else {
-		pt := sv.procTable.Iter()
-		for name := range pt {
-			p := sv.Start(name)
-			procs = append(procs, p)
-		}
-	}
-
-	return
-}
-
-func (sv *Supervisor) Stop(name string) *Process {
-	sv.mu.Lock()
-	defer sv.mu.Unlock()
-
-	p := sv.procTable.Get(name)
-	if p == nil {
-		return nil
-	}
-
-	appName := strings.Split(name, "::")[0]
-	proj := sv.projectTable.Get(appName)
-
-	if p.State == processStopped {
-		p.logger.Infof("%s is stopped.", p.FullName)
-		proj.SetState(p.Name, false)
-		return p
-	}
-
-	if proj.GetState(p.Name) {
-		if p.Stop() {
-			proj.SetState(p.Name, false)
-			return p
-		}
-	}
-
-	return nil
-}
-
-func (sv *Supervisor) StopAll(appName string) (procs []*Process) {
-	procs = make([]*Process, 0)
-
-	var proj *Project
-	if appName != "*" {
-		proj = sv.projectTable.Get(appName)
-		if proj == nil {
-			return
-		}
-
-		plist := proj.GetProcNames()
-		for _, name := range plist {
-			if proj.GetState(name) {
-				fullName := fmt.Sprintf("%s::%s", appName, name)
-				p := sv.Stop(fullName)
-				if p != nil {
-					procs = append(procs, p)
-				}
-			}
-		}
-	} else {
-		pt := sv.procTable.Iter()
-		for name := range pt {
-			p := sv.Stop(name)
-			procs = append(procs, p)
-		}
-	}
-
-	return
-}
-
-func (sv *Supervisor) Restart(name string) *Process {
-	sv.Stop(name)
-	return sv.Start(name)
-}
-
-func (sv *Supervisor) RestartAll(appName string) []*Process {
-	sv.StopAll(appName)
-	return sv.StartAll(appName)
-}
-
-func (sv *Supervisor) UpdateApp(
-	force bool,
-	procOpts *ProcfileOption,
-) (*Project, []*Process) {
-	sv.mu.Lock()
-	defer sv.mu.Unlock()
-
-	newProj := CreateProject(procOpts)
-	oldProj := sv.projectTable.Get(procOpts.AppName)
-	if force {
-		if oldProj == nil {
-			if len(procOpts.Processes) == 0 || procOpts.WorkDir == "" {
-				return nil, nil
-			}
-
-			_ = sv.projectTable.Set(procOpts.AppName, newProj)
-
-			for name, opt := range procOpts.Processes {
-				fullName := fmt.Sprintf("%s::%s", procOpts.AppName, name)
-				proc := NewProcess(fullName, opt)
-				proc.SetPidPath()
-
-				sv.procTable.Add(fullName, proc)
-				newProj.SetState(name, false)
-			}
-
-			return newProj, nil
-		}
-	} else {
-		if oldProj != nil {
-			// 记录新增的进程信息
-			pList := make([]*Process, 0)
-			oldProcList := oldProj.GetProcNames()
-			newProcList := newProj.GetProcNames()
-
-			for _, name := range oldProcList {
-				if !newProj.IsExist(name) && !oldProj.GetState(name) {
-					fullName := fmt.Sprintf("%s::%s", oldProj.Name, name)
-					_ = sv.procTable.Del(fullName)
-				}
-			}
-
-			for _, name := range newProcList {
-				fullName := fmt.Sprintf("%s::%s", newProj.Name, name)
-				if exist := sv.procTable.Get(fullName); exist != nil {
-					continue
-				}
-
-				opt := procOpts.Processes[name]
-				proc := NewProcess(fullName, opt)
-				proc.SetPidPath()
-
-				sv.procTable.Add(fullName, proc)
-				oldProj.SetState(name, false)
-
-				pList = append(pList, proc)
-			}
-
-			return oldProj, pList
-		}
-	}
-
-	return oldProj, nil
-}
-
-// 参数toDo是一个占位符
-// 0x0表示将要停止进程
-// 0x1表示将要启动进程
-// 0x2表示将要重启进程
-// 0x3表示查看进程状态
-func (sv *Supervisor) BatchDo(toDo ActionCtl, opt *ProcfileOption, procs []string) []*ProcInfo {
-	var doFn func(string) *Process
-	var doMany func(string) []*Process
-
-	proj, _ := sv.UpdateApp(true, opt)
-	if proj == nil {
-		sv.logger.Errorf("Cannot find project in work directory %s", opt.WorkDir)
-		return nil
-	}
-
-	switch toDo {
-	case ActionStop:
-		doFn = sv.Stop
-		doMany = sv.StopAll
-	case ActionStart:
-		doFn = sv.Start
-		doMany = sv.StartAll
-	case ActionRestart:
-		doFn = sv.Restart
-		doMany = sv.RestartAll
-	case ActionStatus:
-		doFn = sv.Status
-		doMany = sv.StatusAll
-	}
-
-	var pInfo = make([]*ProcInfo, 0)
-	if slices.Contains(procs, "*") {
-		completed := doMany("*")
-
-		for _, p := range completed {
-			pInfo = append(pInfo, &ProcInfo{
-				Pid:     p.Pid,
-				Name:    p.FullName,
-				StartAt: p.StartAt.UnixMilli(),
-				StopAt:  p.StartAt.UnixMilli(),
-				Status:  p.State,
-			})
-		}
-	} else {
-		for _, name := range procs {
-			p := doFn(name)
-			if p != nil {
-				pInfo = append(pInfo, &ProcInfo{
-					Pid:     p.Pid,
-					Name:    p.FullName,
-					StartAt: p.StartAt.UnixMilli(),
-					StopAt:  p.StartAt.UnixMilli(),
-					Status:  p.State,
-				})
-			}
-		}
-	}
-
-	return pInfo
 }

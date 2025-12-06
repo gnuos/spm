@@ -120,8 +120,8 @@ func (pt *ProjectTable) Get(name string) *Project {
 }
 
 func (pt *ProjectTable) Set(name string, p *Project) bool {
-	pt.mu.RLock()
-	defer pt.mu.RUnlock()
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
 
 	exist := false
 
