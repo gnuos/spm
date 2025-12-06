@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -26,9 +25,7 @@ func init() {
 }
 
 func execReloadPersistentPreRun() {
-	if !isDaemonRunning() {
-		log.Fatalln("ERROR: Supervisor has not started. Please check supervisor daemon.")
-	}
+	requireDaemonRunning()
 }
 
 func execReloadCmd(cmd *cobra.Command, args []string) {

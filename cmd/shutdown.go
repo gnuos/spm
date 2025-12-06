@@ -27,9 +27,7 @@ func init() {
 }
 
 func execShutdownPersistentPreRun() {
-	if !isDaemonRunning() {
-		log.Fatalln("ERROR: Supervisor has not started. Please check supervisor daemon.")
-	}
+	requireDaemonRunning()
 }
 
 func execShutdownCmd(cmd *cobra.Command, args []string) {

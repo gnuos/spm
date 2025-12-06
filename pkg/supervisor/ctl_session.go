@@ -60,6 +60,35 @@ func NewSession(s *Supervisor, c net.Conn) *SpmSession {
 	}
 }
 
+// errorResponse 创建错误响应消息的辅助函数
+//
+// 参数：
+//
+//	err: 错误对象
+//
+// 返回：
+//
+//	*ResponseMsg: 错误响应消息
+//	ResponseCtl: 错误响应控制类型
+//
+// 功能：
+//  1. 记录错误日志
+//  2. 创建标准的500错误响应
+//
+// 使用示例：
+//
+//	if err != nil {
+//	    res, result = se.errorResponse(err)
+//	    goto SEND
+//	}
+func (se *SpmSession) errorResponse(err error) (*ResponseMsg, ResponseCtl) {
+	se.logger.Error(err)
+	return &ResponseMsg{
+		Code:    500,
+		Message: err.Error(),
+	}, ResponseMsgErr
+}
+
 func (se *SpmSession) Handle() ResponseCtl {
 	defer func() {
 		_ = se.sock.Close()
@@ -76,14 +105,7 @@ func (se *SpmSession) Handle() ResponseCtl {
 	// 先接收消息的字节数组长度
 	buf, err := se.sock.Recv(strconv.IntSize)
 	if err != nil {
-		se.logger.Error(err)
-		res = &ResponseMsg{
-			Code:    500,
-			Message: err.Error(),
-		}
-
-		result = ResponseMsgErr
-
+		res, result = se.errorResponse(err)
 		goto SEND
 	}
 
@@ -91,27 +113,13 @@ func (se *SpmSession) Handle() ResponseCtl {
 	msgLen = binary.BigEndian.Uint64(buf)
 	buf, err = se.sock.Recv(msgLen)
 	if err != nil {
-		se.logger.Error(err)
-		res = &ResponseMsg{
-			Code:    500,
-			Message: err.Error(),
-		}
-
-		result = ResponseMsgErr
-
+		res, result = se.errorResponse(err)
 		goto SEND
 	}
 
 	msg, err = decodeData[ActionMsg](buf)
 	if err != nil {
-		se.logger.Error(err)
-		res = &ResponseMsg{
-			Code:    500,
-			Message: err.Error(),
-		}
-
-		result = ResponseMsgErr
-
+		res, result = se.errorResponse(err)
 		goto SEND
 	}
 

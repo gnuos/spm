@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"log"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -26,24 +24,12 @@ func init() {
 }
 
 func execStatusPersistentPreRun() {
-	if !isDaemonRunning() {
-		log.Fatalln("ERROR: Supervisor has not started. Please check supervisor daemon.")
-	}
+	requireDaemonRunning()
 }
 
 func execStatusCmd(cmd *cobra.Command, args []string) {
-	var procs string
-
-	if len(args) == 0 {
-		procs = "*"
-	} else if len(args) == 1 {
-		procs = args[0]
-	} else {
-		procs = strings.Join(args, "|")
-	}
-
 	msg.Action = supervisor.ActionStatus
-	msg.Processes = procs
+	msg.Processes = parseProcessArgs(args, ";")
 
 	res := supervisor.ClientRun(msg)
 	if res == nil {
