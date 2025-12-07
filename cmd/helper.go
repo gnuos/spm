@@ -111,8 +111,8 @@ func requireDaemonRunning() {
 //
 // 功能：
 //
-//	1. 调用rootCmd的PersistentPreRun（初始化配置和日志）
-//	2. 执行自定义的预运行逻辑
+//  1. 调用rootCmd的PersistentPreRun（初始化配置和日志）
+//  2. 执行自定义的预运行逻辑
 //
 // 使用示例：
 //

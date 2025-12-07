@@ -266,19 +266,14 @@ func (sv *Supervisor) StopAll(appName string) []*Process {
 			name := strings.Split(fullName, "::")[1]
 			if proj.GetState(name) {
 				return sv.Stop(fullName)
+			} else {
+				return notFoundProc
 			}
-		}
+		})
 	} else {
-		pt := sv.procTable.Iter()
-
-		for name := range pt {
-			p := sv.Stop(name)
-			procs = append(procs, p)
-		}
+		// 对于所有项目，直接调用 Stop
+		return sv.forEachProcess(appName, sv.Stop)
 	}
-
-	// 对于所有项目，直接调用 Stop
-	return sv.forEachProcess(appName, sv.Stop)
 }
 
 // Restart 重启单个进程
