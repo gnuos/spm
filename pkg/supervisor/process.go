@@ -62,7 +62,6 @@ type Process struct {
 	State    ProcessState
 	OutLog   io.WriteCloser
 	ErrLog   io.WriteCloser
-	Env      []string
 
 	wg      sync.WaitGroup
 	mu      sync.Mutex
@@ -80,11 +79,6 @@ func NewProcess(fullName string, opts *ProcessOption) *Process {
 		stopSignal = sigTable["TERM"]
 	}
 
-	env := make([]string, 0)
-	for k, v := range opts.Env {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
-	}
-
 	name := strings.Split(fullName, "::")[1]
 
 	return &Process{
@@ -95,7 +89,6 @@ func NewProcess(fullName string, opts *ProcessOption) *Process {
 		StartAt:  time.Time{},
 		StopAt:   time.Time{},
 		State:    processStandby,
-		Env:      env,
 
 		signal: stopSignal,
 		logger: logger.Logging(fullName),
@@ -229,7 +222,7 @@ func (p *Process) buildCommand() (*exec.Cmd, error) {
 	// 构建命令
 	cmd := exec.CommandContext(p.ctx, exe, args...)
 	cmd.WaitDelay = 2 * time.Second
-	cmd.Env = append(cmd.Env, p.Env...)
+	cmd.Env = append(cmd.Env, p.Options.Env...)
 
 	return cmd, nil
 }

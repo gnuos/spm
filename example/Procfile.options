@@ -1,10 +1,22 @@
 ---
+# Nullable
+# auto generate
 appName:
-workDir:
-procfile:
-env:
-    PATH: /usr/local/bin:$PATH
 
+# Nullable
+# auto get from work directory where cmd is executed
+workDir:
+
+# Nullable
+# auto get from work directory where cmd is executed
+procfile:
+
+# Nullable
+env:
+    - PATH=/usr/local/bin:$PATH
+
+# Nullable
+# auto generate from Procfile
 processes:
     web:
         root:
@@ -13,4 +25,4 @@ processes:
         # Supported signal: TERM QUIT INT
         stopSignal: TERM
         env:
-            PORT: 3000
+            - PORT=3000

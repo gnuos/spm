@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"maps"
 	"os"
 	"strings"
 	"sync"
@@ -21,17 +20,17 @@ type ProcfileOption struct {
 	AppName   string
 	WorkDir   string
 	Procfile  string
-	Env       map[string]string
-	Processes map[string]*ProcessOption
+	Env       []string
+	Processes map[string]*ProcessOption `yaml:"processes,omitempty"`
 }
 
 type ProcessOption struct {
-	Root       string
-	PidRoot    string
-	LogRoot    string
-	StopSignal string
-	NumProcs   int
-	Env        map[string]string
+	Root       string   `yaml:"root,omitempty"`
+	PidRoot    string   `yaml:"pidRoot,omitempty"`
+	LogRoot    string   `yaml:"logRoot,omitempty"`
+	StopSignal string   `yaml:"stopSignal,omitempty"`
+	NumProcs   int      `yaml:"numProcs,omitempty"`
+	Env        []string `yaml:"env,omitempty"`
 
 	cmd []string
 }
@@ -42,10 +41,15 @@ func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
 	var procOpts *ProcfileOption
 	var optsFile = fmt.Sprintf("%s/%s", cwd, "Procfile.options")
 
+	viper.SetDefault("env", []string{})
+	viper.SetDefault("workDir", cwd)
+	viper.SetDefault("procfile", procfile)
+	viper.SetDefault("processes", make(map[string]*ProcessOption))
+	viper.SetConfigType("yaml")
+
 	_, err := os.Stat(optsFile)
 	if errors.Is(err, os.ErrNotExist) {
 		viper.SetConfigName("Procfile.options")
-		viper.SetConfigType("yaml")
 		viper.AddConfigPath(".")
 		viper.AddConfigPath("etc")
 		viper.AddConfigPath("../etc")
@@ -54,16 +58,6 @@ func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
 	} else {
 		viper.SetConfigFile(optsFile)
 	}
-
-	appName, err := GetAppName(cwd)
-	if err != nil {
-		return nil, err
-	}
-
-	viper.SetDefault("appName", appName)
-	viper.SetDefault("workDir", cwd)
-	viper.SetDefault("procfile", procfile)
-	viper.SetDefault("env", map[string]string{})
 
 	err = viper.ReadInConfig()
 	if err != nil && !errors.As(err, &viper.ConfigFileNotFoundError{}) {
@@ -86,24 +80,29 @@ func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
 		return nil, errors.New(`invalid Procfile format, process name must be consist of 'a-z A-Z 0-9 - _'`)
 	}
 
+	// 加载Procfile文件内容成功之后再设置项目名
+	appName, err := GetAppName(cwd)
+	if err != nil {
+		return nil, err
+	}
+
+	if procOpts.AppName == "" {
+		procOpts.AppName = appName
+	}
+
 	if len(procOpts.Processes) > 0 {
 		for k := range procOpts.Processes {
 			if _, ok := (*procFileCfg)[k]; !ok {
 				delete(procOpts.Processes, k)
 			}
 		}
-	} else {
-		procOpts.Processes = make(map[string]*ProcessOption)
-	}
-
-	if procOpts.WorkDir == "" {
-		procOpts.WorkDir = cwd
 	}
 
 	for name, cmd := range *procFileCfg {
 		opt, ok := procOpts.Processes[name]
 		if !ok {
 			opt = &ProcessOption{}
+			procOpts.Processes[name] = opt
 		}
 
 		if opt.Root == "" {
@@ -127,11 +126,12 @@ func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
 			opt.StopSignal = "TERM"
 		}
 
+		parentEnv := append(config.GetConfig().Env, procOpts.Env...)
 		if opt.Env == nil {
-			opt.Env = maps.Clone(procOpts.Env)
-		} else {
-			opt.Env = Merge(procOpts.Env, opt.Env)
+			_ = copy(opt.Env, procOpts.Env)
 		}
+
+		opt.Env = append(parentEnv, opt.Env...)
 
 		var args []string
 		if strings.Contains(cmd, `"`) || strings.Contains(cmd, `'`) {
@@ -140,17 +140,8 @@ func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
 			args = strings.Split(cmd, " ")
 		}
 
-		opt.cmd = args
+		opt.cmd = append(opt.cmd, args...)
 	}
 
 	return procOpts, nil
-}
-
-func Merge(envs ...map[string]string) map[string]string {
-	globalEnvs := maps.Clone(config.GetConfig().Env)
-	for _, e := range envs {
-		maps.Copy(globalEnvs, e)
-	}
-
-	return globalEnvs
 }

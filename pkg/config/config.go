@@ -23,25 +23,25 @@ type Config struct {
 	Daemonize bool
 	PidFile   string
 	Socket    string
+	Env       []string `yaml:",omitempty"`
 	Log       Log
-	Env       map[string]string
 }
 
 type Log struct {
-	Level        string
-	FileEnabled  bool
-	FilePath     string
-	FileSize     int
-	FileCompress bool
-	MaxAge       int
-	MaxBackups   int
+	Level        string `yaml:",omitempty"`
+	FileEnabled  bool   `yaml:",omitempty"`
+	FilePath     string `yaml:",omitempty"`
+	FileSize     int    `yaml:",omitempty"`
+	FileCompress bool   `yaml:",omitempty"`
+	MaxAge       int    `yaml:",omitempty"`
+	MaxBackups   int    `yaml:",omitempty"`
 }
 
 func setDefault() {
 	viper.SetDefault("daemonize", true)
 	viper.SetDefault("pidfile", constants.DaemonPidFilePath)
 	viper.SetDefault("socket", constants.DaemonSockFilePath)
-	viper.SetDefault("env", map[string]string{})
+	viper.SetDefault("env", []string{})
 	viper.SetDefault("log", map[string]any{
 		"level":        constants.DefaultLogLevel,
 		"filePath":     constants.DaemonLogFilePath,
@@ -63,10 +63,6 @@ func SetConfig(configFile string) {
 
 	_, err := os.Stat(configFile)
 	if errors.Is(err, os.ErrNotExist) {
-		cfgName := fmt.Sprintf("%s.yml", constants.DefaultDaemonName)
-
-		viper.SetConfigName(cfgName)
-		viper.SetConfigType("yaml")
 		viper.AddConfigPath(".")
 		viper.AddConfigPath("etc")
 		viper.AddConfigPath("../etc")
@@ -77,6 +73,9 @@ func SetConfig(configFile string) {
 		viper.SetConfigFile(configFile)
 	}
 
+	cfgName := fmt.Sprintf("%s.yml", constants.DefaultDaemonName)
+	viper.SetConfigName(cfgName)
+	viper.SetConfigType("yaml")
 	viper.SetEnvPrefix("SPM")
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
