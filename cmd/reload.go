@@ -6,7 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"spm/pkg/supervisor"
+	"spm/pkg/client"
+	"spm/pkg/config"
 )
 
 var reloadCmd = &cobra.Command{
@@ -21,9 +22,7 @@ func init() {
 }
 
 func execReloadCmd(cmd *cobra.Command, args []string) {
-	msg.Action = supervisor.ActionReload
-
-	res := supervisor.ClientRun(msg)
+	res := client.Reload(config.WorkDirFlag, config.ProcfileFlag)
 	if res == nil {
 		fmt.Println("No processes changed")
 		return

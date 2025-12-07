@@ -6,7 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"spm/pkg/supervisor"
+	"spm/pkg/client"
+	"spm/pkg/config"
 )
 
 var restartCmd = &cobra.Command{
@@ -21,10 +22,7 @@ func init() {
 }
 
 func execRestartCmd(cmd *cobra.Command, args []string) {
-	msg.Action = supervisor.ActionRestart
-	msg.Processes = parseProcessArgs(args, ";")
-
-	res := supervisor.ClientRun(msg)
+	res := client.Restart(config.WorkDirFlag, config.ProcfileFlag, args...)
 	if res == nil {
 		fmt.Println("No processes to restart.")
 		return

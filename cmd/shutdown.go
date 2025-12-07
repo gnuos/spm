@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"spm/pkg/supervisor"
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"spm/pkg/client"
+	"spm/pkg/config"
 )
 
 var shutdownCmd = &cobra.Command{
@@ -20,12 +22,10 @@ func init() {
 }
 
 func execShutdownCmd(cmd *cobra.Command, args []string) {
-	msg.Action = supervisor.ActionShutdown
-
 	// 使用 channel 异步执行 RPC 调用
 	done := make(chan struct{})
 	go func() {
-		_ = supervisor.ClientRun(msg)
+		_ = client.Shutdown(config.WorkDirFlag, config.ProcfileFlag)
 		close(done)
 	}()
 

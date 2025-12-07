@@ -6,7 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"spm/pkg/supervisor"
+	"spm/pkg/client"
+	"spm/pkg/config"
 )
 
 var stopCmd = &cobra.Command{
@@ -21,10 +22,7 @@ func init() {
 }
 
 func execStopCmd(cmd *cobra.Command, args []string) {
-	msg.Action = supervisor.ActionStop
-	msg.Processes = parseProcessArgs(args, ";")
-
-	res := supervisor.ClientRun(msg)
+	res := client.Stop(config.WorkDirFlag, config.ProcfileFlag, args...)
 	if res == nil {
 		fmt.Println("No processes to stop.")
 		return

@@ -3,12 +3,13 @@ package cmd
 import (
 	"fmt"
 	"log"
+	"spm/pkg/supervisor"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"spm/pkg/client"
 	"spm/pkg/config"
-	"spm/pkg/supervisor"
 )
 
 var startCmd = &cobra.Command{
@@ -40,10 +41,7 @@ func init() {
 
 func execStartCmd(cmd *cobra.Command, args []string) {
 	sendStartCmd := func(args []string) {
-		msg.Action = supervisor.ActionStart
-		msg.Processes = parseProcessArgs(args, ";")
-
-		res := supervisor.ClientRun(msg)
+		res := client.Start(config.WorkDirFlag, config.ProcfileFlag, args...)
 		if res == nil {
 			fmt.Println("No processes to start.")
 			return
