@@ -10,12 +10,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
-	"time"
 
 	"spm/pkg/config"
 	"spm/pkg/logger"
-	"spm/pkg/utils"
 
 	"github.com/ugorji/go/codec"
 	"go.uber.org/zap"
@@ -169,21 +166,12 @@ func (se *SpmSession) Handle() ResponseCtl {
 			// 先准备响应消息
 			res = &ResponseMsg{
 				Code:    200,
-				Message: "Shutdown initiated",
+				Message: "Shutdown prepared",
 			}
 			result = ResponseShutdown
 
-			// 异步执行关闭逻辑，避免阻塞响应发送
-			go func() {
-				// 等待响应发送完成
-				time.Sleep(100 * time.Millisecond)
-
-				// 执行优雅关闭
-				se.sv.Shutdown()
-
-				// 向主循环发送退出信号
-				utils.StopChan <- syscall.SIGTERM
-			}()
+			// 执行优雅关闭
+			se.sv.Shutdown()
 		}
 	case ActionLog:
 		res = &ResponseMsg{
@@ -211,8 +199,8 @@ func (se *SpmSession) doReload(msg *ActionMsg) *ResponseMsg {
 
 	if msg.Projects != "" {
 		if strings.Contains(msg.Projects, ";") {
-			projects := strings.Split(msg.Projects, ";")
-			for _, p := range projects {
+			projects := strings.SplitSeq(msg.Projects, ";")
+			for p := range projects {
 				procOpts = append(procOpts, &ProcfileOption{AppName: p})
 			}
 		} else {
@@ -284,7 +272,7 @@ func (se *SpmSession) doRun(msg *ActionMsg) *ResponseMsg {
 		AppName:   appName,
 		WorkDir:   msg.WorkDir,
 		Procfile:  msg.Procfile,
-		Env:       make(map[string]string),
+		Env:       make([]string, 0),
 		Processes: make(map[string]*ProcessOption),
 	}
 
@@ -292,7 +280,7 @@ func (se *SpmSession) doRun(msg *ActionMsg) *ResponseMsg {
 		Root:       msg.WorkDir,
 		PidRoot:    config.GetRuntimeDir("/var"),
 		LogRoot:    config.GetRuntimeDir("/var"),
-		Env:        make(map[string]string),
+		Env:        make([]string, 0),
 		StopSignal: "TERM",
 		NumProcs:   1,
 

@@ -1,17 +1,34 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"strings"
 	"syscall"
 
+	"spm/pkg/config"
 	"spm/pkg/utils"
 	"spm/pkg/utils/constants"
 
 	"github.com/spf13/cobra"
 )
+
+func killDaemon(sig syscall.Signal) {
+	spid, err := utils.ReadPid(config.GetConfig().PidFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if spid > 0 {
+		err = syscall.Kill(spid, sig)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v", err.Error())
+			return
+		}
+	}
+}
 
 func isDaemonRunning() bool {
 	daemonPid, err := utils.ReadPid(constants.DaemonPidFilePath)

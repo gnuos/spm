@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -26,14 +28,21 @@ func execShutdownCmd(cmd *cobra.Command, args []string) {
 	done := make(chan struct{})
 	go func() {
 		_ = client.Shutdown(config.WorkDirFlag, config.ProcfileFlag)
+		done <- struct{}{}
 		close(done)
 	}()
 
 	// 等待 RPC 响应或超时
 	select {
 	case <-done:
-		fmt.Println("Supervisor service has been stopped.")
+		fmt.Println("All processes has been stopped.")
+		killDaemon(syscall.SIGQUIT)
 	case <-time.After(5 * time.Second):
-		fmt.Println("Shutdown initiated (timeout waiting for response).")
+		fmt.Println("Shutdown processes timeout. Force kill supervisor.")
+		killDaemon(syscall.SIGKILL)
+		_ = os.Remove(config.GetConfig().PidFile)
+		_ = os.Remove(config.GetConfig().Socket)
 	}
+
+	fmt.Println("Supervisor service has been stopped.")
 }

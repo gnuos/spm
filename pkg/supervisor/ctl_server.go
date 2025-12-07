@@ -36,12 +36,10 @@ SERVER:
 				}
 
 				session := NewSession(s.sv, conn)
-				go func(se *SpmSession) {
-					result := se.Handle()
-					if result == ResponseShutdown {
-						utils.FinishChan <- struct{}{}
-					}
-				}(session)
+				result := session.Handle()
+				if result == ResponseShutdown {
+					utils.FinishChan <- struct{}{}
+				}
 			}
 		}
 	}
