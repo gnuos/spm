@@ -14,7 +14,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-var m sync.Mutex
+// procfileViperMutex 保护 Procfile 配置加载时的 viper 全局状态操作
+var procfileViperMutex sync.Mutex
 
 type ProcfileOption struct {
 	AppName   string                    `yaml:"app_name" mapstructure:"app_name"`
@@ -36,8 +37,8 @@ type ProcessOption struct {
 }
 
 func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
-	m.Lock()
-	defer m.Unlock()
+	procfileViperMutex.Lock()
+	defer procfileViperMutex.Unlock()
 	var procOpts *ProcfileOption
 	var optsFile = fmt.Sprintf("%s/%s", cwd, "Procfile.options")
 

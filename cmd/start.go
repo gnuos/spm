@@ -18,7 +18,7 @@ var startCmd = &cobra.Command{
 }
 
 func init() {
-	startCmd.PersistentFlags().BoolVarP(&config.ForegroundFlag, "foregroud", "f", false, "Run the supervisor in the foreground")
+	startCmd.PersistentFlags().BoolVarP(&config.ForegroundFlag, "foreground", "f", false, "Run the supervisor in the foreground")
 
 	// start命令特殊处理：尝试启动daemon而不是要求daemon已运行
 	setupCommandPreRun(startCmd, func() {

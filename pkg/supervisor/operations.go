@@ -17,8 +17,10 @@ import (
 //	*Process: 进程实例，不存在时返回 nil
 //
 // 注意事项：
-//  1. 会检查进程是否正在运行
-//  2. 如果运行中，会更新项目表中的状态
+//  1. 这是一个只读查询方法，不会修改进程状态
+//  2. 进程状态的维护由 Start/Stop 方法负责
+//
+// 线程安全：使用读锁保护，支持并发查询
 //
 // 示例：
 //
@@ -29,21 +31,10 @@ import (
 //
 // 创建时间: 2025-12-06
 func (sv *Supervisor) Status(name string) *Process {
-	sv.mu.Lock()
-	defer sv.mu.Unlock()
+	sv.mu.RLock()
+	defer sv.mu.RUnlock()
 
-	p := sv.procTable.Get(name)
-	if p == nil {
-		return nil
-	}
-
-	if p.IsRunning() {
-		appName := strings.Split(name, "::")[0]
-		proj := sv.projectTable.Get(appName)
-		proj.SetState(p.Name, true)
-	}
-
-	return p
+	return sv.procTable.Get(name)
 }
 
 // forEachProcess 对指定范围的进程执行操作

@@ -20,8 +20,8 @@ type Project struct {
 }
 
 func (p *Project) IsExist(name string) bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	_, ok := p.running[name]
 
@@ -29,7 +29,10 @@ func (p *Project) IsExist(name string) bool {
 }
 
 func (p *Project) GetState(name string) bool {
-	if p.IsExist(name) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if _, ok := p.running[name]; ok {
 		return p.running[name]
 	}
 
@@ -44,8 +47,8 @@ func (p *Project) SetState(name string, state bool) {
 }
 
 func (p *Project) GetProcNames() []string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	pList := make([]string, 0)
 
@@ -111,6 +114,9 @@ type ProjectTable struct {
 }
 
 func (pt *ProjectTable) Get(name string) *Project {
+	pt.mu.RLock()
+	defer pt.mu.RUnlock()
+
 	p, ok := pt.table[name]
 	if ok {
 		return p

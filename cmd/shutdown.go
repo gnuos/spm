@@ -2,12 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"log"
-	"os"
-	"spm/pkg/config"
 	"spm/pkg/supervisor"
-	"spm/pkg/utils"
-	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -26,20 +22,18 @@ func init() {
 func execShutdownCmd(cmd *cobra.Command, args []string) {
 	msg.Action = supervisor.ActionShutdown
 
-	_ = supervisor.ClientRun(msg)
+	// 使用 channel 异步执行 RPC 调用
+	done := make(chan struct{})
+	go func() {
+		_ = supervisor.ClientRun(msg)
+		close(done)
+	}()
 
-	spid, err := utils.ReadPid(config.GetConfig().PidFile)
-	if err != nil {
-		log.Fatal(err)
+	// 等待 RPC 响应或超时
+	select {
+	case <-done:
+		fmt.Println("Supervisor service has been stopped.")
+	case <-time.After(5 * time.Second):
+		fmt.Println("Shutdown initiated (timeout waiting for response).")
 	}
-
-	if spid > 0 {
-		err = syscall.Kill(spid, syscall.SIGQUIT)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v", err.Error())
-			return
-		}
-	}
-
-	fmt.Println("Supervisor service has been stopped.")
 }

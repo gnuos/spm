@@ -29,7 +29,7 @@ const (
 	processStopped  ProcessState = "Stopped"
 	processStopping ProcessState = "Stopping"
 	processRunning  ProcessState = "Running"
-	processStanby   ProcessState = "Stanby"
+	processStandby  ProcessState = "Standby"
 	processFailed   ProcessState = "Failed"
 )
 
@@ -83,7 +83,7 @@ func NewProcess(fullName string, opts *ProcessOption) *Process {
 		Options:  opts,
 		StartAt:  time.Time{},
 		StopAt:   time.Time{},
-		State:    processStanby,
+		State:    processStandby,
 		Env:      env,
 
 		signal: stopSignal,
@@ -99,20 +99,13 @@ func (p *Process) SetPidPath() {
 
 	if p.Options.PidRoot != "" {
 		info, err := os.Stat(p.Options.PidRoot)
-		if info.IsDir() {
-			if err == nil {
-				p.pidPath = fmt.Sprintf("%s/%s.pid", p.Options.PidRoot, p.Name)
-			}
+		if err == nil && info.IsDir() {
+			p.pidPath = fmt.Sprintf("%s/%s.pid", p.Options.PidRoot, p.Name)
 		}
 	}
 }
 
 func (p *Process) SetLog() bool {
-	var outputLogPath string
-	var errorLogPath string
-	var outLog io.WriteCloser
-	var errLog io.WriteCloser
-
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -121,8 +114,8 @@ func (p *Process) SetLog() bool {
 		logDir = p.Options.LogRoot
 	}
 
-	outputLogPath = fmt.Sprintf("%s/%s_output.log", logDir, p.Name)
-	errorLogPath = fmt.Sprintf("%s/%s_error.log", logDir, p.Name)
+	outputLogPath := fmt.Sprintf("%s/%s_output.log", logDir, p.Name)
+	errorLogPath := fmt.Sprintf("%s/%s_error.log", logDir, p.Name)
 
 	outLog, err := os.OpenFile(outputLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
@@ -130,8 +123,9 @@ func (p *Process) SetLog() bool {
 		return false
 	}
 
-	errLog, err = os.OpenFile(errorLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	errLog, err := os.OpenFile(errorLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
+		_ = outLog.Close() // 第一个文件已打开，需要关闭防止资源泄漏
 		p.logger.Error(err)
 		return false
 	}
@@ -147,7 +141,7 @@ func (p *Process) IsRunning() bool {
 	defer p.mu.Unlock()
 
 	if p.sysproc == nil {
-		p.State = processStanby
+		p.State = processStandby
 		return false
 	}
 
@@ -257,7 +251,7 @@ func (p *Process) Start() bool {
 				if ws.Signaled() {
 					p.logger.Infof("Process %s is stopped by signal: %v", p.Name, p.signal)
 				} else {
-					p.logger.Infof("Process %s exied with code=%d", p.Name, ws.ExitStatus())
+					p.logger.Infof("Process %s exited with code=%d", p.Name, ws.ExitStatus())
 				}
 			}
 		}
@@ -380,7 +374,9 @@ func (p *Process) watchLog(logtype string, r io.ReadCloser) {
 	}
 
 	defer func() {
-		_ = dest.Close()
+		if err := dest.Close(); err != nil {
+			p.logger.Warnf("%s log file close error: %v", logtype, err)
+		}
 		p.logger.Infof("%s logging finished", logtype)
 	}()
 

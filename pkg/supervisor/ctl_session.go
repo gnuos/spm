@@ -10,9 +10,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"spm/pkg/config"
 	"spm/pkg/logger"
+	"spm/pkg/utils"
 
 	"github.com/ugorji/go/codec"
 	"go.uber.org/zap"
@@ -78,8 +81,8 @@ func NewSession(s *Supervisor, c net.Conn) *SpmSession {
 // 使用示例：
 //
 //	if err != nil {
-//	    res, result = se.errorResponse(err)
-//	    goto SEND
+//	    res, result := se.errorResponse(err)
+//	    return se.sendResponse(res, result)
 //	}
 func (se *SpmSession) errorResponse(err error) (*ResponseMsg, ResponseCtl) {
 	se.logger.Error(err)
@@ -89,49 +92,98 @@ func (se *SpmSession) errorResponse(err error) (*ResponseMsg, ResponseCtl) {
 	}, ResponseMsgErr
 }
 
+// sendResponse 发送响应消息到客户端
+//
+// 参数：
+//
+//	res: 响应消息对象
+//	result: 响应控制类型
+//
+// 返回：
+//
+//	ResponseCtl: 如果发送成功返回传入的result，失败返回ResponseMsgErr
+//
+// 功能：
+//  1. 编码响应消息
+//  2. 发送消息长度
+//  3. 发送消息内容
+//  4. 统一处理发送过程中的错误
+func (se *SpmSession) sendResponse(res *ResponseMsg, result ResponseCtl) ResponseCtl {
+	buf, err := encodeData(res)
+	if err != nil {
+		se.logger.Error(err)
+		return ResponseMsgErr
+	}
+
+	size := make([]byte, strconv.IntSize)
+	binary.BigEndian.PutUint64(size, uint64(len(buf)))
+
+	if err = se.sock.Send(size); err != nil {
+		se.logger.Error(err)
+		return ResponseMsgErr
+	}
+
+	if err = se.sock.Send(buf); err != nil {
+		se.logger.Error(err)
+		return ResponseMsgErr
+	}
+
+	return result
+}
+
 func (se *SpmSession) Handle() ResponseCtl {
 	defer func() {
 		_ = se.sock.Close()
 	}()
-
-	var result ResponseCtl
-	var res *ResponseMsg
-	var msg *ActionMsg
-	var msgLen uint64
-	var buf []byte
 
 	// 服务器端处理收到的指令
 
 	// 先接收消息的字节数组长度
 	buf, err := se.sock.Recv(strconv.IntSize)
 	if err != nil {
-		res, result = se.errorResponse(err)
-		goto SEND
+		res, result := se.errorResponse(err)
+		return se.sendResponse(res, result)
 	}
 
 	// 根据长度再接受ActionMsg消息
-	msgLen = binary.BigEndian.Uint64(buf)
+	msgLen := binary.BigEndian.Uint64(buf)
 	buf, err = se.sock.Recv(msgLen)
 	if err != nil {
-		res, result = se.errorResponse(err)
-		goto SEND
+		res, result := se.errorResponse(err)
+		return se.sendResponse(res, result)
 	}
 
-	msg, err = decodeData[ActionMsg](buf)
+	msg, err := decodeData[ActionMsg](buf)
 	if err != nil {
-		res, result = se.errorResponse(err)
-		goto SEND
+		res, result := se.errorResponse(err)
+		return se.sendResponse(res, result)
 	}
+
+	// 处理业务逻辑
+	var res *ResponseMsg
+	var result ResponseCtl
 
 	switch msg.Action {
 	case ActionKill, ActionShutdown:
 		{
-			se.sv.Shutdown()
+			// 先准备响应消息
 			res = &ResponseMsg{
 				Code:    200,
-				Message: "Shutdown completed",
+				Message: "Shutdown initiated",
 			}
 			result = ResponseShutdown
+
+			// 异步执行关闭逻辑，避免阻塞响应发送
+			go func() {
+				// 等待响应发送完成
+				time.Sleep(100 * time.Millisecond)
+
+				// 执行优雅关闭
+				se.sv.Shutdown()
+
+				// 向主循环发送退出信号
+				utils.StopChan <- syscall.SIGTERM
+			}()
 		}
 	case ActionLog:
 		res = &ResponseMsg{
@@ -150,29 +202,7 @@ func (se *SpmSession) Handle() ResponseCtl {
 		result = ResponseNormal
 	}
 
-SEND:
-	buf, err = encodeData(res)
-	if err != nil {
-		se.logger.Error(err)
-		return ResponseMsgErr
-	}
-
-	size := make([]byte, strconv.IntSize)
-	binary.BigEndian.PutUint64(size, uint64(len(buf)))
-
-	err = se.sock.Send(size)
-	if err != nil {
-		se.logger.Error(err)
-		return ResponseMsgErr
-	}
-
-	err = se.sock.Send(buf)
-	if err != nil {
-		se.logger.Error(err)
-		return ResponseMsgErr
-	}
-
-	return result
+	return se.sendResponse(res, result)
 }
 
 func (se *SpmSession) doReload(msg *ActionMsg) *ResponseMsg {

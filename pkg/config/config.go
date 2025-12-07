@@ -15,7 +15,9 @@ import (
 )
 
 var config *Config
-var m sync.Mutex
+
+// configViperMutex 保护全局配置加载时的 viper 全局状态操作
+var configViperMutex sync.Mutex
 
 type Config struct {
 	Daemonize bool              `yaml:"daemonize" mapstructure:"daemonize"`
@@ -55,8 +57,8 @@ func GetConfig() *Config {
 }
 
 func SetConfig(configFile string) {
-	m.Lock()
-	defer m.Unlock()
+	configViperMutex.Lock()
+	defer configViperMutex.Unlock()
 
 	_, err := os.Stat(configFile)
 	if errors.Is(err, os.ErrNotExist) {
