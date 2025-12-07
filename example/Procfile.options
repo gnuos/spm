@@ -1,3 +1,16 @@
+---
+appName:
+workDir:
+procfile:
+env:
+    SPM_DAEMONISE: true
+
 processes:
     web:
-        stop_signal: TERM
+        root:
+        pidRoot:
+        logRoot:
+        stopSignal: TERM
+        NumProcs
+        env:
+            PORT: 3000

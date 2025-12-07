@@ -23,10 +23,10 @@ var actionResponse = map[ActionCtl]string{
 }
 
 type ActionMsg struct {
-	Action    ActionCtl `msgpack:"action" json:"action"`
-	WorkDir   string    `msgpack:"workdir" json:"workdir"`
-	Procfile  string    `msgpack:"procfile" json:"procfile"`
-	Projects  string    `msgpack:"projects" json:"projects"`
-	Processes string    `msgpack:"processes" json:"processes"`
-	CmdLine   []string  `msgpack:"cmdline" json:"cmdline"`
+	Action    ActionCtl
+	WorkDir   string
+	Procfile  string
+	Projects  string
+	Processes string
+	CmdLine   []string
 }

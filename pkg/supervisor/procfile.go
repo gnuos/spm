@@ -4,7 +4,7 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/goccy/go-yaml"
+	"go.yaml.in/yaml/v3"
 )
 
 type ProcfileConfig map[string]string

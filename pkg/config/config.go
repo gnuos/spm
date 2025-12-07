@@ -18,21 +18,21 @@ var config *Config
 var m sync.Mutex
 
 type Config struct {
-	Daemonize bool              `yaml:"daemonize" mapstructure:"daemonize"`
-	PidFile   string            `yaml:"pidfile" mapstructure:"pidfile"`
-	Socket    string            `yaml:"socket" mapstructure:"socket"`
-	Log       Log               `yaml:"log" mapstructure:"log"`
-	Env       map[string]string `yaml:"env,omitempty" mapstructure:"env,omitempty"`
+	Daemonize bool
+	PidFile   string
+	Socket    string
+	Log       Log
+	Env       map[string]string
 }
 
 type Log struct {
-	Level        string `yaml:"level,omitempty" mapstructure:"level,omitempty"`
-	FileEnabled  bool   `yaml:"file_enabled" mapstructure:"file_enabled"`
-	FilePath     string `yaml:"file_path,omitempty" mapstructure:"file_path,omitempty"`
-	FileSize     int    `yaml:"file_size,omitempty" mapstructure:"file_size,omitempty"`
-	FileCompress bool   `yaml:"file_compress,omitempty" mapstructure:"file_compress,omitempty"`
-	MaxAge       int    `yaml:"max_age,omitempty" mapstructure:"max_age,omitempty"`
-	MaxBackups   int    `yaml:"max_backups,omitempty" mapstructure:"max_backups,omitempty"`
+	Level        string
+	FileEnabled  bool
+	FilePath     string
+	FileSize     int
+	FileCompress bool
+	MaxAge       int
+	MaxBackups   int
 }
 
 func setDefault() {
@@ -40,13 +40,13 @@ func setDefault() {
 	viper.SetDefault("pidfile", constants.DaemonPidFilePath)
 	viper.SetDefault("socket", constants.DaemonSockFilePath)
 	viper.SetDefault("log", map[string]any{
-		"Level":        constants.DefaultLogLevel,
-		"FilePath":     constants.DaemonLogFilePath,
-		"FileEnabled":  true,
-		"FileCompress": false,
-		"FileSize":     10,
-		"MaxAge":       7,
-		"MaxBackups":   7,
+		"level":        constants.DefaultLogLevel,
+		"filePath":     constants.DaemonLogFilePath,
+		"fileEnabled":  true,
+		"fileCompress": false,
+		"fileSize":     10,
+		"maxAge":       7,
+		"maxBackups":   7,
 	})
 }
 

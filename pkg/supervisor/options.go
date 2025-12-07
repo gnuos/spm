@@ -17,20 +17,20 @@ import (
 var m sync.Mutex
 
 type ProcfileOption struct {
-	AppName   string                    `yaml:"app_name" mapstructure:"app_name"`
-	WorkDir   string                    `yaml:"workdir" mapstructure:"workdir"`
-	Procfile  string                    `yaml:"procfile" mapstructure:"procfile"`
-	Env       map[string]string         `yaml:"env,omitempty" mapstructure:"env,omitempty"`
-	Processes map[string]*ProcessOption `yaml:"processes,omitempty" mapstructure:"processes,omitempty"`
+	AppName   string
+	WorkDir   string
+	Procfile  string
+	Env       map[string]string
+	Processes map[string]*ProcessOption
 }
 
 type ProcessOption struct {
-	Root       string            `yaml:"root,omitempty" mapstructure:"root,omitempty"`
-	PidRoot    string            `yaml:"pid_root,omitempty" mapstructure:"pid_root,omitempty"`
-	LogRoot    string            `yaml:"log_root,omitempty" mapstructure:"log_root,omitempty"`
-	StopSignal string            `yaml:"stop_signal,omitempty" mapstructure:"stop_signal,omitempty"`
-	NumProcs   int               `yaml:"num_procs,omitempty" mapstructure:"num_procs,omitempty"`
-	Env        map[string]string `yaml:"env,omitempty" mapstructure:"env,omitempty"`
+	Root       string
+	PidRoot    string
+	LogRoot    string
+	StopSignal string
+	NumProcs   int
+	Env        map[string]string
 
 	cmd []string
 }
@@ -59,8 +59,8 @@ func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
 		return nil, err
 	}
 
-	viper.SetDefault("app_name", appName)
-	viper.SetDefault("workdir", cwd)
+	viper.SetDefault("appName", appName)
+	viper.SetDefault("workDir", cwd)
 	viper.SetDefault("procfile", procfile)
 
 	err = viper.ReadInConfig()
