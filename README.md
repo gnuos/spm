@@ -1,8 +1,10 @@
 # Spm
 
-本工具的理念是简单快速管理后台进程。基本是 [Procodile](https://github.com/adamcooke/procodile) 这个项目的移植版，这个项目已经没有再维护了，大部分代码都是参考了这个项目的Ruby代码用Go改写的。
+本工具的理念是简单快速管理后台进程。基本是 [Procodile](https://github.com/adamcooke/procodile) 这个项目的移植版，procodile 这个项目已经没有再维护了，大部分代码都是参考了这个项目的Ruby代码用Go改写的。
 
 主要的特点是根据Procfile格式批量管理应用进程，另外也可以支持运行多个不同目录里的项目进程。
+
+当前也支持从命令行接收一行命令和参数作为后台进程运行，运行进程的工作目录就是执行命令的目录位置。
 
 
 ## 安装方法
@@ -15,7 +17,6 @@ cd spm
 just
 
 ```
-
 
 如果没有安装 `just` 这个工具，可以手动执行下面的命令进行编译：
 
@@ -65,6 +66,16 @@ Use "spm [command] --help" for more information about a command.
 
 
 在项目的 `example` 目录中，可以看到示例文件，以供参考。
+
+
+## 致谢
+
+感谢以下项目提供的代码参考
+
+- [mikestefanello/pagoda](https://github.com/mikestefanello/pagoda) 借鉴了加载配置文件的写法
+- [kondohiroki/go-boilerplate](https://github.com/kondohiroki/go-boilerplate) 参考了日志和配置文件的结构
+- [codoworks/go-boilerplate](https://github.com/codoworks/go-boilerplate) 参考了子命令的写法
+- [cskr/pubsub](https://github.com/cskr/pubsub) 抄写了消息队列的实现
 
 
 ## License
