@@ -32,10 +32,15 @@ type ProcTable struct {
 //
 //	*Process: 进程实例，不存在时返回 nil
 //
+// 线程安全：使用读锁保护
+//
 // 示例：
 //
 //	proc := procTable.Get("myapp::web-server")
 func (pt *ProcTable) Get(name string) *Process {
+	pt.mu.RLock()
+	defer pt.mu.RUnlock()
+
 	p, ok := pt.table[name]
 	if ok {
 		return p

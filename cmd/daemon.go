@@ -19,7 +19,7 @@ var daemonCmd = &cobra.Command{
 }
 
 func init() {
-	daemonCmd.PersistentFlags().BoolVarP(&config.ForegroundFlag, "foregroud", "f", false, "Run the supervisor in the foreground")
+	daemonCmd.PersistentFlags().BoolVarP(&config.ForegroundFlag, "foreground", "f", false, "Run the supervisor in the foreground")
 
 	daemonCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		rootCmd.PersistentPreRun(cmd, args)

@@ -2,13 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"log"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"spm/pkg/supervisor"
+	"spm/pkg/client"
+	"spm/pkg/config"
 )
 
 var stopCmd = &cobra.Command{
@@ -18,35 +17,12 @@ var stopCmd = &cobra.Command{
 }
 
 func init() {
-	stopCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-		rootCmd.PersistentPreRun(cmd, args)
-		execStopPersistentPreRun()
-	}
-
+	setupCommandPreRun(stopCmd, requireDaemonRunning)
 	rootCmd.AddCommand(stopCmd)
 }
 
-func execStopPersistentPreRun() {
-	if !isDaemonRunning() {
-		log.Fatalln("ERROR: Supervisor has not started. Please check supervisor daemon.")
-	}
-}
-
 func execStopCmd(cmd *cobra.Command, args []string) {
-	var procs string
-
-	if len(args) == 0 {
-		procs = "*"
-	} else if len(args) == 1 {
-		procs = args[0]
-	} else {
-		procs = strings.Join(args, "|")
-	}
-
-	msg.Action = supervisor.ActionStop
-	msg.Processes = procs
-
-	res := supervisor.ClientRun(msg)
+	res := client.Stop(config.WorkDirFlag, config.ProcfileFlag, args...)
 	if res == nil {
 		fmt.Println("No processes to stop.")
 		return

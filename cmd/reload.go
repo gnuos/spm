@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"spm/pkg/supervisor"
+	"spm/pkg/client"
+	"spm/pkg/config"
 )
 
 var reloadCmd = &cobra.Command{
@@ -17,24 +17,12 @@ var reloadCmd = &cobra.Command{
 }
 
 func init() {
-	reloadCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-		rootCmd.PersistentPreRun(cmd, args)
-		execReloadPersistentPreRun()
-	}
-
+	setupCommandPreRun(reloadCmd, requireDaemonRunning)
 	rootCmd.AddCommand(reloadCmd)
 }
 
-func execReloadPersistentPreRun() {
-	if !isDaemonRunning() {
-		log.Fatalln("ERROR: Supervisor has not started. Please check supervisor daemon.")
-	}
-}
-
 func execReloadCmd(cmd *cobra.Command, args []string) {
-	msg.Action = supervisor.ActionReload
-
-	res := supervisor.ClientRun(msg)
+	res := client.Reload(config.WorkDirFlag, config.ProcfileFlag)
 	if res == nil {
 		fmt.Println("No processes changed")
 		return

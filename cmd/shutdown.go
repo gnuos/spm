@@ -2,14 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"log"
-	"os"
-	"spm/pkg/config"
-	"spm/pkg/supervisor"
-	"spm/pkg/utils"
-	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
+
+	"spm/pkg/client"
+	"spm/pkg/config"
 )
 
 var shutdownCmd = &cobra.Command{
@@ -19,36 +17,23 @@ var shutdownCmd = &cobra.Command{
 }
 
 func init() {
-	shutdownCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-		rootCmd.PersistentPreRun(cmd, args)
-		execShutdownPersistentPreRun()
-	}
+	setupCommandPreRun(shutdownCmd, requireDaemonRunning)
 	rootCmd.AddCommand(shutdownCmd)
 }
 
-func execShutdownPersistentPreRun() {
-	if !isDaemonRunning() {
-		log.Fatalln("ERROR: Supervisor has not started. Please check supervisor daemon.")
-	}
-}
-
 func execShutdownCmd(cmd *cobra.Command, args []string) {
-	msg.Action = supervisor.ActionShutdown
+	// 使用 channel 异步执行 RPC 调用
+	done := make(chan struct{})
+	go func() {
+		_ = client.Shutdown(config.WorkDirFlag, config.ProcfileFlag)
+		close(done)
+	}()
 
-	_ = supervisor.ClientRun(msg)
-
-	spid, err := utils.ReadPid(config.GetConfig().PidFile)
-	if err != nil {
-		log.Fatal(err)
+	// 等待 RPC 响应或超时
+	select {
+	case <-done:
+		fmt.Println("Supervisor service has been stopped.")
+	case <-time.After(5 * time.Second):
+		fmt.Println("Shutdown initiated (timeout waiting for response).")
 	}
-
-	if spid > 0 {
-		err = syscall.Kill(spid, syscall.SIGQUIT)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v", err.Error())
-			return
-		}
-	}
-
-	fmt.Println("Supervisor service has been stopped.")
 }

@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"spm/pkg/config"
-	"spm/pkg/supervisor"
 	"spm/pkg/utils"
 	"spm/pkg/utils/constants"
 
@@ -18,8 +17,6 @@ var (
 	cwd             string
 	showVersion     bool
 	defaultProcfile string
-
-	msg *supervisor.ActionMsg
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -74,13 +71,4 @@ func init() {
 
 func execRootPersistentPreRun() {
 	utils.InitEnv()
-
-	msg = &supervisor.ActionMsg{
-		Action:    supervisor.ActionStatus,
-		WorkDir:   config.WorkDirFlag,
-		Procfile:  config.ProcfileFlag,
-		Projects:  "",
-		Processes: "*",
-		CmdLine:   make([]string, 0),
-	}
 }
