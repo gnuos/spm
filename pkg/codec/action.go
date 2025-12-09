@@ -1,4 +1,4 @@
-package supervisor
+package codec
 
 type ActionCtl int
 
@@ -14,7 +14,7 @@ const (
 	ActionReload
 )
 
-var actionResponse = map[ActionCtl]string{
+var ActionResponse = map[ActionCtl]string{
 	ActionRun:     "Run command successfully",
 	ActionStart:   "Start processes successfully",
 	ActionStop:    "Stop processes successfully",
@@ -23,10 +23,10 @@ var actionResponse = map[ActionCtl]string{
 }
 
 type ActionMsg struct {
-	Action    ActionCtl
-	WorkDir   string
-	Procfile  string
-	Projects  string
-	Processes string
-	CmdLine   []string
+	Action    ActionCtl `cbor:""`
+	WorkDir   string    `cbor:""`
+	Procfile  string    `cbor:""`
+	Projects  string    `cbor:",omitempty"`
+	Processes string    `cbor:",omitempty"`
+	CmdLine   []string  `cbor:",omitempty"`
 }

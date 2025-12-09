@@ -3,6 +3,7 @@ package supervisor
 
 import (
 	"fmt"
+	"spm/pkg/codec"
 	"strings"
 )
 
@@ -144,7 +145,7 @@ func (sv *Supervisor) Start(name string) *Process {
 			FullName: p.FullName,
 			StartAt:  p.StartAt,
 			StopAt:   p.StopAt,
-			State:    processStarted,
+			State:    codec.ProcessStarted,
 		}
 	}
 
@@ -159,7 +160,7 @@ func (sv *Supervisor) Start(name string) *Process {
 			FullName: p.FullName,
 			StartAt:  p.StartAt,
 			StopAt:   p.StopAt,
-			State:    processFailed,
+			State:    codec.ProcessFailed,
 		}
 	}
 }
@@ -214,14 +215,15 @@ func (sv *Supervisor) Stop(name string) *Process {
 	appName := strings.Split(name, "::")[0]
 	proj := sv.projectTable.Get(appName)
 
-	if p.State == processRunning && proj.GetState(p.Name) {
+	if p.State == codec.ProcessRunning && proj.GetState(p.Name) {
 		if p.Stop() {
 			proj.SetState(p.Name, false)
+
 			return p
 		}
 	}
 
-	if p.State == processStopped {
+	if p.State == codec.ProcessStopped {
 		p.logger.Infof("%s is stopped.", p.FullName)
 		proj.SetState(p.Name, false)
 		return p

@@ -41,7 +41,7 @@ func execDaemonCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	fmt.Println("Supervisor is not running. Starting supervisor...")
+	fmt.Printf("Supervisor is not running. Starting supervisor...\n\n")
 
 	sv := supervisor.NewSupervisor()
 	sv.Daemon()

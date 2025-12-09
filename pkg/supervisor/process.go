@@ -15,25 +15,13 @@ import (
 	"syscall"
 	"time"
 
+	"spm/pkg/codec"
 	"spm/pkg/config"
 	"spm/pkg/logger"
 	"spm/pkg/utils"
 
 	_ "github.com/k0kubun/pp/v3"
 	"go.uber.org/zap"
-)
-
-type ProcessState string
-
-const (
-	processStarted  ProcessState = "Started"
-	processNotfound ProcessState = "NotFound"
-	processUnknown  ProcessState = "Unknown"
-	processStopped  ProcessState = "Stopped"
-	processStopping ProcessState = "Stopping"
-	processRunning  ProcessState = "Running"
-	processStandby  ProcessState = "Standby"
-	processFailed   ProcessState = "Failed"
 )
 
 var sigTable = map[string]syscall.Signal{
@@ -49,7 +37,7 @@ var notFoundProc = &Process{
 	FullName: "",
 	StartAt:  time.Time{},
 	StopAt:   time.Time{},
-	State:    processNotfound,
+	State:    codec.ProcessNotfound,
 }
 
 type Process struct {
@@ -59,7 +47,7 @@ type Process struct {
 	Options  *ProcessOption
 	StartAt  time.Time
 	StopAt   time.Time
-	State    ProcessState
+	State    codec.ProcessState
 	OutLog   io.WriteCloser
 	ErrLog   io.WriteCloser
 
@@ -88,7 +76,7 @@ func NewProcess(fullName string, opts *ProcessOption) *Process {
 		Options:  opts,
 		StartAt:  time.Time{},
 		StopAt:   time.Time{},
-		State:    processStandby,
+		State:    codec.ProcessStandby,
 
 		signal: stopSignal,
 		logger: logger.Logging(fullName),
@@ -109,7 +97,7 @@ func (p *Process) SetPidPath() {
 	}
 }
 
-func (p *Process) SetLog() bool {
+func (p *Process) SetLog() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -124,20 +112,20 @@ func (p *Process) SetLog() bool {
 	outLog, err := os.OpenFile(outputLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		p.logger.Error(err)
-		return false
+		return err
 	}
 
 	errLog, err := os.OpenFile(errorLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		_ = outLog.Close() // 第一个文件已打开，需要关闭防止资源泄漏
 		p.logger.Error(err)
-		return false
+		return err
 	}
 
 	p.OutLog = outLog
 	p.ErrLog = errLog
 
-	return true
+	return nil
 }
 
 func (p *Process) IsRunning() bool {
@@ -145,35 +133,35 @@ func (p *Process) IsRunning() bool {
 	defer p.mu.Unlock()
 
 	if p.sysproc == nil {
-		p.State = processStandby
+		p.State = codec.ProcessStandby
 		return false
 	}
 
 	if p.Pid > 0 {
 		process, err := os.FindProcess(p.Pid)
 		if err != nil {
-			p.State = processStopped
+			p.State = codec.ProcessStopped
 			return false
 		}
 
 		// 发送信号0来检查进程是否存活
 		if err = process.Signal(syscall.Signal(0)); err != nil {
-			p.State = processStopped
+			p.State = codec.ProcessStopped
 			return false
 		}
 	}
 
-	p.State = processRunning
+	p.State = codec.ProcessRunning
 	return true
 }
 
-func (p *Process) Status() ProcessState {
+func (p *Process) Status() codec.ProcessState {
 	return p.State
 }
 
 // validateStart 验证进程是否可以启动
 func (p *Process) validateStart() error {
-	if p.State == processStopping {
+	if p.State == codec.ProcessStopping {
 		return fmt.Errorf("process is stopped/stopping therefore cannot be started again")
 	}
 
@@ -188,8 +176,8 @@ func (p *Process) validateStart() error {
 // prepareEnvironment 准备启动环境（日志文件和工作目录）
 func (p *Process) prepareEnvironment() error {
 	// 每次启动都打开日志文件描述符
-	if !p.SetLog() {
-		return fmt.Errorf("cannot open log files")
+	if err := p.SetLog(); err != nil {
+		return fmt.Errorf("cannot open log files: %v", err)
 	}
 
 	// 切换到进程的工作目录
@@ -253,7 +241,7 @@ func (p *Process) setupStreams(cmd *exec.Cmd) error {
 func (p *Process) launchProcess(cmd *exec.Cmd) error {
 	// 启动进程
 	if err := cmd.Start(); err != nil {
-		p.State = processFailed
+		p.State = codec.ProcessFailed
 		return fmt.Errorf("failed to start process: %w", err)
 	}
 
@@ -264,7 +252,7 @@ func (p *Process) launchProcess(cmd *exec.Cmd) error {
 	p.Pid = cmd.Process.Pid
 	p.sysproc = cmd.Process
 	p.StartAt = time.Now()
-	p.State = processRunning
+	p.State = codec.ProcessRunning
 
 	// 写入PID文件
 	if err := os.WriteFile(p.pidPath, []byte(strconv.Itoa(p.Pid)), 0644); err != nil {
@@ -340,7 +328,7 @@ func (p *Process) Start() bool {
 
 func (p *Process) Stop() bool {
 	if p.IsRunning() && !p.updatePid() {
-		p.State = processUnknown
+		p.State = codec.ProcessUnknown
 	}
 
 	p.mu.Lock()
@@ -348,7 +336,7 @@ func (p *Process) Stop() bool {
 	defer p.onStop()
 
 	switch p.State {
-	case processRunning:
+	case codec.ProcessRunning:
 		{
 			if p.cancel == nil {
 				return false
@@ -358,24 +346,24 @@ func (p *Process) Stop() bool {
 			p.wg.Wait()
 
 			p.logger.Infof("Sending %s to %d", p.Options.StopSignal, p.Pid)
-			p.State = processStopping
+			p.State = codec.ProcessStopping
 
 			err := p.sysproc.Signal(p.signal)
 			if err != nil && !errors.Is(err, os.ErrProcessDone) {
 				p.logger.Error(err)
 				_ = p.sysproc.Kill()
-				p.State = processStopped
+				p.State = codec.ProcessStopped
 			} else {
-				p.State = processStopped
+				p.State = codec.ProcessStopped
 			}
 		}
-	case processStopped:
+	case codec.ProcessStopped:
 		p.logger.Infof("Process %s already stopped", p.Name)
 	default:
 		p.logger.Infof("Process %s status is %s", p.Name, p.State)
 	}
 
-	return p.State == processStopped
+	return p.State == codec.ProcessStopped
 }
 
 func (p *Process) Restart() bool {

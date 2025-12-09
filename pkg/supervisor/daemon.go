@@ -70,6 +70,7 @@ func GetDaemon() *daemon.Context {
 //	sv.Daemon()  // 阻塞运行
 func (sv *Supervisor) Daemon() {
 	defer func() {
+		_ = sv.logger.Sync()
 		if config.ForegroundFlag {
 			_ = os.Remove(config.GetConfig().PidFile)
 		} else {
@@ -100,9 +101,9 @@ func (sv *Supervisor) Daemon() {
 		}
 	}
 
-	fmt.Printf("\033[1;33;40mSpm supervisor started at %s\033[0m\n\n", sv.StartedAt.Format(time.RFC3339))
-
 	go StartServer(sv)
+
+	fmt.Printf("\033[1;32;40mSpm supervisor started at %s\033[0m\n\n", sv.StartedAt.Format(time.RFC3339))
 
 	sv.logger.Infof("Spm supervisor PID %d", sv.Pid)
 

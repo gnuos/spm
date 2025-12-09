@@ -8,18 +8,20 @@ import (
 	"os"
 	"strconv"
 
+	"spm/pkg/codec"
 	"spm/pkg/config"
 	"spm/pkg/logger"
 
+	"github.com/fxamacker/cbor/v2"
 	"go.uber.org/zap"
 )
 
 type SpmClient struct {
-	sock   *spmSocket
+	sock   *rpcSocket
 	logger *zap.SugaredLogger
 }
 
-func ClientRun(msg *ActionMsg) []*ProcInfo {
+func ClientRun(msg *codec.ActionMsg) []*codec.ProcInfo {
 	c := new(SpmClient)
 	c.logger = logger.Logging("spm-cli")
 
@@ -34,13 +36,19 @@ func ClientRun(msg *ActionMsg) []*ProcInfo {
 		_ = conn.Close()
 	}()
 
-	c.sock = &spmSocket{
+	c.sock = &rpcSocket{
 		conn: conn,
 	}
 
 	var data []byte
 
-	data, err = encodeData(msg)
+	encoder, err := codec.GetEncoder()
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return nil
+	}
+
+	data, err = encoder.Marshal(msg)
 	if err != nil {
 		c.logger.Error(err)
 		_, _ = fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
@@ -91,7 +99,8 @@ func ClientRun(msg *ActionMsg) []*ProcInfo {
 		return nil
 	}
 
-	res, err := decodeData[ResponseMsg](data)
+	var res = new(codec.ResponseMsg)
+	err = cbor.Unmarshal(data, res)
 	if err != nil {
 		c.logger.Error(err)
 		_, _ = fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)

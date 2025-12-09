@@ -2,9 +2,11 @@ package supervisor
 
 import (
 	"net"
+	"sync"
 
 	"go.uber.org/zap"
 
+	"spm/pkg/codec"
 	"spm/pkg/config"
 	"spm/pkg/logger"
 	"spm/pkg/utils"
@@ -12,6 +14,7 @@ import (
 
 type spmServer struct {
 	sv     *Supervisor
+	wg     sync.WaitGroup
 	sock   net.Listener
 	logger *zap.SugaredLogger
 }
@@ -36,14 +39,21 @@ SERVER:
 				}
 
 				session := NewSession(s.sv, conn)
-				result := session.Handle()
-				if result == ResponseShutdown {
-					utils.FinishChan <- struct{}{}
-				}
+
+				s.wg.Add(1)
+				go func(se *SpmSession) {
+					defer s.wg.Done()
+
+					result := se.Handle()
+					if result == codec.ResponseShutdown {
+						utils.FinishChan <- struct{}{}
+					}
+				}(session)
 			}
 		}
 	}
 
+	s.wg.Wait()
 	s.logger.Info("Supervisor server is stopped")
 }
 

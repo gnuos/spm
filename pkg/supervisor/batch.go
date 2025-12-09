@@ -3,6 +3,7 @@ package supervisor
 
 import (
 	"slices"
+	"spm/pkg/codec"
 )
 
 // BatchDo 批量执行进程操作
@@ -38,7 +39,7 @@ import (
 //	infos := sv.BatchDo(ActionStop, opt, []string{"web-server", "worker"})
 //
 // 创建时间: 2025-12-06
-func (sv *Supervisor) BatchDo(toDo ActionCtl, opt *ProcfileOption, procs []string) []*ProcInfo {
+func (sv *Supervisor) BatchDo(toDo codec.ActionCtl, opt *ProcfileOption, procs []string) []*codec.ProcInfo {
 	var doFn func(string) *Process
 	var doMany func(string) []*Process
 
@@ -49,30 +50,31 @@ func (sv *Supervisor) BatchDo(toDo ActionCtl, opt *ProcfileOption, procs []strin
 	}
 
 	switch toDo {
-	case ActionStop:
+	case codec.ActionStop:
 		doFn = sv.Stop
 		doMany = sv.StopAll
-	case ActionStart:
+	case codec.ActionStart:
 		doFn = sv.Start
 		doMany = sv.StartAll
-	case ActionRestart:
+	case codec.ActionRestart:
 		doFn = sv.Restart
 		doMany = sv.RestartAll
-	case ActionStatus:
+	case codec.ActionStatus:
 		doFn = sv.Status
 		doMany = sv.StatusAll
 	}
 
-	var pInfo = make([]*ProcInfo, 0)
+	var pInfo = make([]*codec.ProcInfo, 0)
 	if slices.Contains(procs, "*") {
 		completed := doMany("*")
 
 		for _, p := range completed {
-			pInfo = append(pInfo, &ProcInfo{
+			pInfo = append(pInfo, &codec.ProcInfo{
 				Pid:     p.Pid,
-				Name:    p.FullName,
-				StartAt: p.StartAt.UnixMilli(),
-				StopAt:  p.StopAt.UnixMilli(),
+				Name:    p.Name,
+				Project: proj.Name,
+				StartAt: p.StartAt,
+				StopAt:  p.StopAt,
 				Status:  p.State,
 			})
 		}
@@ -80,11 +82,12 @@ func (sv *Supervisor) BatchDo(toDo ActionCtl, opt *ProcfileOption, procs []strin
 		for _, name := range procs {
 			p := doFn(name)
 			if p != nil {
-				pInfo = append(pInfo, &ProcInfo{
+				pInfo = append(pInfo, &codec.ProcInfo{
 					Pid:     p.Pid,
-					Name:    p.FullName,
-					StartAt: p.StartAt.UnixMilli(),
-					StopAt:  p.StopAt.UnixMilli(),
+					Name:    p.Name,
+					Project: proj.Name,
+					StartAt: p.StartAt,
+					StopAt:  p.StopAt,
 					Status:  p.State,
 				})
 			}

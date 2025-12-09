@@ -29,6 +29,6 @@ func execStopCmd(cmd *cobra.Command, args []string) {
 	}
 
 	for _, proc := range res {
-		fmt.Printf("[%s] %s\t[PID %d] %s\n", time.UnixMilli(proc.StopAt).Format(time.RFC3339), proc.Name, proc.Pid, proc.Status)
+		fmt.Printf("[%s] %s::%s\t[PID %d] %s\n", proc.StopAt.Format(time.RFC3339), proc.Project, proc.Name, proc.Pid, proc.Status)
 	}
 }

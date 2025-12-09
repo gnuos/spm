@@ -11,18 +11,19 @@ import (
 	"strconv"
 	"strings"
 
+	"spm/pkg/codec"
 	"spm/pkg/config"
 	"spm/pkg/logger"
 
-	"github.com/ugorji/go/codec"
+	"github.com/fxamacker/cbor/v2"
 	"go.uber.org/zap"
 )
 
-type spmSocket struct {
+type rpcSocket struct {
 	conn net.Conn
 }
 
-func (s *spmSocket) Recv(l uint64) ([]byte, error) {
+func (s *rpcSocket) Recv(l uint64) ([]byte, error) {
 	buf := make([]byte, l)
 	n, err := s.conn.Read(buf)
 	if err != nil {
@@ -35,25 +36,25 @@ func (s *spmSocket) Recv(l uint64) ([]byte, error) {
 	}
 }
 
-func (s *spmSocket) Send(v []byte) error {
+func (s *rpcSocket) Send(v []byte) error {
 	_, e := s.conn.Write(v)
 	return e
 }
 
-func (s *spmSocket) Close() error {
+func (s *rpcSocket) Close() error {
 	return s.conn.Close()
 }
 
 type SpmSession struct {
 	sv     *Supervisor
-	sock   *spmSocket
+	sock   *rpcSocket
 	logger *zap.SugaredLogger
 }
 
 func NewSession(s *Supervisor, c net.Conn) *SpmSession {
 	return &SpmSession{
 		sv: s,
-		sock: &spmSocket{
+		sock: &rpcSocket{
 			conn: c,
 		},
 		logger: logger.Logging("spm-serv"),
@@ -68,8 +69,8 @@ func NewSession(s *Supervisor, c net.Conn) *SpmSession {
 //
 // 返回：
 //
-//	*ResponseMsg: 错误响应消息
-//	ResponseCtl: 错误响应控制类型
+//	*codec.ResponseMsg: 错误响应消息
+//	codec.ResponseCtl: 错误响应控制类型
 //
 // 功能：
 //  1. 记录错误日志
@@ -81,12 +82,12 @@ func NewSession(s *Supervisor, c net.Conn) *SpmSession {
 //	    res, result := se.errorResponse(err)
 //	    return se.sendResponse(res, result)
 //	}
-func (se *SpmSession) errorResponse(err error) (*ResponseMsg, ResponseCtl) {
+func (se *SpmSession) errorResponse(err error) (*codec.ResponseMsg, codec.ResponseCtl) {
 	se.logger.Error(err)
-	return &ResponseMsg{
+	return &codec.ResponseMsg{
 		Code:    500,
 		Message: err.Error(),
-	}, ResponseMsgErr
+	}, codec.ResponseMsgErr
 }
 
 // sendResponse 发送响应消息到客户端
@@ -98,18 +99,24 @@ func (se *SpmSession) errorResponse(err error) (*ResponseMsg, ResponseCtl) {
 //
 // 返回：
 //
-//	ResponseCtl: 如果发送成功返回传入的result，失败返回ResponseMsgErr
+//	codec.ResponseCtl: 如果发送成功返回传入的result，失败返回ResponseMsgErr
 //
 // 功能：
 //  1. 编码响应消息
 //  2. 发送消息长度
 //  3. 发送消息内容
 //  4. 统一处理发送过程中的错误
-func (se *SpmSession) sendResponse(res *ResponseMsg, result ResponseCtl) ResponseCtl {
-	buf, err := encodeData(res)
+func (se *SpmSession) sendResponse(res *codec.ResponseMsg, result codec.ResponseCtl) codec.ResponseCtl {
+	encoder, err := codec.GetEncoder()
 	if err != nil {
 		se.logger.Error(err)
-		return ResponseMsgErr
+		return codec.ResponseMsgErr
+	}
+
+	buf, err := encoder.Marshal(res)
+	if err != nil {
+		se.logger.Error(err)
+		return codec.ResponseMsgErr
 	}
 
 	size := make([]byte, strconv.IntSize)
@@ -117,18 +124,18 @@ func (se *SpmSession) sendResponse(res *ResponseMsg, result ResponseCtl) Respons
 
 	if err = se.sock.Send(size); err != nil {
 		se.logger.Error(err)
-		return ResponseMsgErr
+		return codec.ResponseMsgErr
 	}
 
 	if err = se.sock.Send(buf); err != nil {
 		se.logger.Error(err)
-		return ResponseMsgErr
+		return codec.ResponseMsgErr
 	}
 
 	return result
 }
 
-func (se *SpmSession) Handle() ResponseCtl {
+func (se *SpmSession) Handle() codec.ResponseCtl {
 	defer func() {
 		_ = se.sock.Close()
 	}()
@@ -150,50 +157,17 @@ func (se *SpmSession) Handle() ResponseCtl {
 		return se.sendResponse(res, result)
 	}
 
-	msg, err := decodeData[ActionMsg](buf)
+	var msg = new(codec.ActionMsg)
+	err = cbor.Unmarshal(buf, msg)
 	if err != nil {
 		res, result := se.errorResponse(err)
 		return se.sendResponse(res, result)
 	}
 
-	// 处理业务逻辑
-	var res *ResponseMsg
-	var result ResponseCtl
-
-	switch msg.Action {
-	case ActionKill, ActionShutdown:
-		{
-			// 先准备响应消息
-			res = &ResponseMsg{
-				Code:    200,
-				Message: "Shutdown prepared",
-			}
-			result = ResponseShutdown
-
-			// 执行优雅关闭
-			se.sv.Shutdown()
-		}
-	case ActionLog:
-		res = &ResponseMsg{
-			Code:    404,
-			Message: "Feature not implemented",
-		}
-		result = ResponseMsgErr
-	case ActionRun:
-		res = se.doRun(msg)
-		result = ResponseNormal
-	case ActionReload:
-		res = se.doReload(msg)
-		result = ResponseReload
-	default:
-		res = se.doAction(msg)
-		result = ResponseNormal
-	}
-
-	return se.sendResponse(res, result)
+	return se.dispatch(msg)
 }
 
-func (se *SpmSession) doReload(msg *ActionMsg) *ResponseMsg {
+func (se *SpmSession) doReload(msg *codec.ActionMsg) *codec.ResponseMsg {
 	changedTotal := make([]*Process, 0)
 	procOpts := make([]*ProcfileOption, 0)
 
@@ -221,7 +195,7 @@ func (se *SpmSession) doReload(msg *ActionMsg) *ResponseMsg {
 		_, changed := se.sv.UpdateApp(false, opt)
 		if changed == nil {
 			se.logger.Errorf("Cannot find project %s.", opt.AppName)
-			return &ResponseMsg{
+			return &codec.ResponseMsg{
 				Code:    500,
 				Message: "Reload failed",
 			}
@@ -230,14 +204,14 @@ func (se *SpmSession) doReload(msg *ActionMsg) *ResponseMsg {
 		}
 	}
 
-	return &ResponseMsg{
+	return &codec.ResponseMsg{
 		Code:      200,
 		Message:   "Reload successfully",
 		Processes: se.sv.Reload(changedTotal),
 	}
 }
 
-func (se *SpmSession) doRun(msg *ActionMsg) *ResponseMsg {
+func (se *SpmSession) doRun(msg *codec.ActionMsg) *codec.ResponseMsg {
 	var exe string
 	var args = make([]string, 0)
 
@@ -245,7 +219,7 @@ func (se *SpmSession) doRun(msg *ActionMsg) *ResponseMsg {
 
 	exePath, err := exec.LookPath(exe)
 	if err != nil {
-		return &ResponseMsg{
+		return &codec.ResponseMsg{
 			Code:    500,
 			Message: err.Error(),
 		}
@@ -259,7 +233,7 @@ func (se *SpmSession) doRun(msg *ActionMsg) *ResponseMsg {
 
 	appName, err := GetAppName(msg.WorkDir)
 	if err != nil {
-		return &ResponseMsg{
+		return &codec.ResponseMsg{
 			Code:    500,
 			Message: err.Error(),
 		}
@@ -294,16 +268,16 @@ func (se *SpmSession) doRun(msg *ActionMsg) *ResponseMsg {
 	_, _ = se.sv.UpdateApp(false, procOpts)
 
 	// 运行单个的进程
-	infos := se.sv.BatchDo(ActionStart, procOpts, []string{fmt.Sprintf("%s::%s", appName, procName)})
+	infos := se.sv.BatchDo(codec.ActionStart, procOpts, []string{fmt.Sprintf("%s::%s", appName, procName)})
 
-	return &ResponseMsg{
+	return &codec.ResponseMsg{
 		Code:      200,
-		Message:   actionResponse[msg.Action],
+		Message:   codec.ActionResponse[msg.Action],
 		Processes: infos,
 	}
 }
 
-func (se *SpmSession) doAction(msg *ActionMsg) *ResponseMsg {
+func (se *SpmSession) doAction(msg *codec.ActionMsg) *codec.ResponseMsg {
 	names := msg.Processes
 	var origProcs []string
 
@@ -316,7 +290,7 @@ func (se *SpmSession) doAction(msg *ActionMsg) *ResponseMsg {
 	}
 
 	var localProcs = make([]string, 0)
-	var infos = make([]*ProcInfo, 0)
+	var infos = make([]*codec.ProcInfo, 0)
 	var procMap = make(map[string][]string)
 
 	for _, n := range origProcs {
@@ -338,7 +312,7 @@ func (se *SpmSession) doAction(msg *ActionMsg) *ResponseMsg {
 		procOpts, err = LoadProcfileOption(msg.WorkDir, msg.Procfile)
 		if err != nil {
 			se.logger.Error(err)
-			return &ResponseMsg{
+			return &codec.ResponseMsg{
 				Code:    500,
 				Message: "Load procfile options failed.",
 			}
@@ -366,38 +340,9 @@ func (se *SpmSession) doAction(msg *ActionMsg) *ResponseMsg {
 		infos = append(infos, se.sv.BatchDo(msg.Action, opt, procs)...)
 	}
 
-	return &ResponseMsg{
+	return &codec.ResponseMsg{
 		Code:      200,
-		Message:   actionResponse[msg.Action],
+		Message:   codec.ActionResponse[msg.Action],
 		Processes: infos,
 	}
-}
-
-func decodeData[T any](data []byte) (*T, error) {
-	var msg = new(T)
-	var mh codec.MsgpackHandle
-
-	mh.StructToArray = true
-
-	decoder := codec.NewDecoderBytes(data, &mh)
-	err := decoder.Decode(msg)
-	if err != nil {
-		return nil, err
-	}
-
-	return msg, nil
-}
-
-func encodeData[T any](v *T) ([]byte, error) {
-	var buf []byte
-	var mh codec.MsgpackHandle
-
-	mh.StructToArray = true
-
-	encoder := codec.NewEncoderBytes(&buf, &mh)
-	err := encoder.Encode(v)
-	if err != nil {
-		return nil, err
-	}
-	return buf, nil
 }

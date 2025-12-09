@@ -29,6 +29,6 @@ func execRestartCmd(cmd *cobra.Command, args []string) {
 	}
 
 	for _, proc := range res {
-		fmt.Printf("[%s] Restarted %s\t[PID %d]\n", time.UnixMilli(proc.StartAt).Format(time.RFC3339), proc.Name, proc.Pid)
+		fmt.Printf("[%s] Restarted %s\t[PID %d]\n", proc.StartAt.Format(time.RFC3339), proc.Name, proc.Pid)
 	}
 }

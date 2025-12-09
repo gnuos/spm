@@ -2,6 +2,7 @@
 package supervisor
 
 import (
+	"spm/pkg/codec"
 	"spm/pkg/config"
 	"spm/pkg/utils"
 )
@@ -32,19 +33,19 @@ import (
 //	}
 //
 // 创建时间: 2025-12-06
-func (sv *Supervisor) Reload(changed []*Process) []*ProcInfo {
+func (sv *Supervisor) Reload(changed []*Process) []*codec.ProcInfo {
 	sv.logger.Info("Reloading configuration")
 	config.SetConfig(utils.GlobalConfigFile)
 
-	pInfo := make([]*ProcInfo, 0)
+	pInfo := make([]*codec.ProcInfo, 0)
 
 	if len(changed) > 0 {
 		for _, p := range changed {
-			pInfo = append(pInfo, &ProcInfo{
+			pInfo = append(pInfo, &codec.ProcInfo{
 				Pid:     p.Pid,
 				Name:    p.FullName,
-				StartAt: p.StartAt.UnixMilli(),
-				StopAt:  p.StopAt.UnixMilli(),
+				StartAt: p.StartAt,
+				StopAt:  p.StopAt,
 				Status:  p.State,
 			})
 		}

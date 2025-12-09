@@ -13,6 +13,7 @@ package client
 import (
 	"strings"
 
+	"spm/pkg/codec"
 	"spm/pkg/supervisor"
 )
 
@@ -41,8 +42,8 @@ import (
 // 注意事项：
 //   - 此函数通过 Unix Socket 与 supervisor daemon 通信
 //   - 如果 daemon 未启动，将返回 nil 并在 stderr 输出错误
-func Start(workDir, procfile string, processes ...string) []*supervisor.ProcInfo {
-	msg := buildActionMsg(supervisor.ActionStart, workDir, procfile, processes)
+func Start(workDir, procfile string, processes ...string) []*codec.ProcInfo {
+	msg := buildActionMsg(codec.ActionStart, workDir, procfile, processes)
 	return supervisor.ClientRun(msg)
 }
 
@@ -71,8 +72,8 @@ func Start(workDir, procfile string, processes ...string) []*supervisor.ProcInfo
 // 注意事项：
 //   - 进程会收到 SIGTERM 信号进行优雅关闭
 //   - 停止信号类型在 Procfile 中配置（默认为 TERM）
-func Stop(workDir, procfile string, processes ...string) []*supervisor.ProcInfo {
-	msg := buildActionMsg(supervisor.ActionStop, workDir, procfile, processes)
+func Stop(workDir, procfile string, processes ...string) []*codec.ProcInfo {
+	msg := buildActionMsg(codec.ActionStop, workDir, procfile, processes)
 	return supervisor.ClientRun(msg)
 }
 
@@ -101,8 +102,8 @@ func Stop(workDir, procfile string, processes ...string) []*supervisor.ProcInfo 
 // 注意事项：
 //   - Restart = Stop + Start，会分配新的 PID
 //   - 如果进程已经停止，则只执行 Start
-func Restart(workDir, procfile string, processes ...string) []*supervisor.ProcInfo {
-	msg := buildActionMsg(supervisor.ActionRestart, workDir, procfile, processes)
+func Restart(workDir, procfile string, processes ...string) []*codec.ProcInfo {
+	msg := buildActionMsg(codec.ActionRestart, workDir, procfile, processes)
 	return supervisor.ClientRun(msg)
 }
 
@@ -130,8 +131,8 @@ func Restart(workDir, procfile string, processes ...string) []*supervisor.ProcIn
 //
 // 注意事项：
 //   - 此操作不会修改进程状态，只读取当前状态
-func Status(workDir, procfile string, processes ...string) []*supervisor.ProcInfo {
-	msg := buildActionMsg(supervisor.ActionStatus, workDir, procfile, processes)
+func Status(workDir, procfile string, processes ...string) []*codec.ProcInfo {
+	msg := buildActionMsg(codec.ActionStatus, workDir, procfile, processes)
 	return supervisor.ClientRun(msg)
 }
 
@@ -155,9 +156,9 @@ func Status(workDir, procfile string, processes ...string) []*supervisor.ProcInf
 // 注意事项：
 //   - 此操作会比较新旧配置，只重启发生变化的进程
 //   - 未变化的进程保持运行，不受影响
-func Reload(workDir, procfile string) []*supervisor.ProcInfo {
-	msg := &supervisor.ActionMsg{
-		Action:   supervisor.ActionReload,
+func Reload(workDir, procfile string) []*codec.ProcInfo {
+	msg := &codec.ActionMsg{
+		Action:   codec.ActionReload,
 		WorkDir:  workDir,
 		Procfile: procfile,
 	}
@@ -183,9 +184,9 @@ func Reload(workDir, procfile string) []*supervisor.ProcInfo {
 //   - 此操作会停止所有管理的进程并关闭 supervisor daemon
 //   - 操作是异步的，调用后 daemon 会在短时间内关闭
 //   - 客户端可能会因为 daemon 关闭而收不到响应（这是正常的）
-func Shutdown(workDir, procfile string) []*supervisor.ProcInfo {
-	msg := &supervisor.ActionMsg{
-		Action:   supervisor.ActionShutdown,
+func Shutdown(workDir, procfile string) []*codec.ProcInfo {
+	msg := &codec.ActionMsg{
+		Action:   codec.ActionShutdown,
 		WorkDir:  workDir,
 		Procfile: procfile,
 	}
@@ -215,13 +216,12 @@ func Shutdown(workDir, procfile string) []*supervisor.ProcInfo {
 //   - 此命令会将临时命令注册为 supervisor 管理的进程
 //   - 进程名称自动从可执行文件名提取
 //   - 命令会在 workDir 目录下执行
-func Run(workDir, procfile string, cmdLine []string) []*supervisor.ProcInfo {
-	msg := &supervisor.ActionMsg{
-		Action:    supervisor.ActionRun,
-		WorkDir:   workDir,
-		Procfile:  procfile,
-		CmdLine:   cmdLine,
-		Processes: "", // Run 命令不需要指定进程名
+func Run(workDir, procfile string, cmdLine []string) []*codec.ProcInfo {
+	msg := &codec.ActionMsg{
+		Action:   codec.ActionRun,
+		WorkDir:  workDir,
+		Procfile: procfile,
+		CmdLine:  cmdLine,
 	}
 	return supervisor.ClientRun(msg)
 }
@@ -248,7 +248,7 @@ func Run(workDir, procfile string, cmdLine []string) []*supervisor.ProcInfo {
 //   - 空列表 []：转换为 "*"（所有进程）
 //   - 单个进程 ["web"]：转换为 "web"
 //   - 多个进程 ["web", "worker"]：转换为 "web;worker"
-func buildActionMsg(action supervisor.ActionCtl, workDir, procfile string, processes []string) *supervisor.ActionMsg {
+func buildActionMsg(action codec.ActionCtl, workDir, procfile string, processes []string) *codec.ActionMsg {
 	// 处理进程列表：空数组表示所有进程
 	procs := "*"
 	if len(processes) == 1 {
@@ -257,7 +257,7 @@ func buildActionMsg(action supervisor.ActionCtl, workDir, procfile string, proce
 		procs = strings.Join(processes, ";")
 	}
 
-	return &supervisor.ActionMsg{
+	return &codec.ActionMsg{
 		Action:    action,
 		WorkDir:   workDir,
 		Procfile:  procfile,

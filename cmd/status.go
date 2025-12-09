@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -27,7 +28,30 @@ func execStatusCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	var uptime string
+	nopTime := time.Time{}
+
 	for _, proc := range res {
-		fmt.Printf("%s\t\t%s\t\tPID: %d\n", proc.Name, proc.Status, proc.Pid)
+		now := time.Now()
+		aliveTime := proc.StopAt.Sub(proc.StartAt)
+		if proc.StopAt.Equal(nopTime) && !proc.StartAt.Equal(nopTime) {
+			aliveTime = now.Sub(proc.StartAt)
+		}
+
+		if aliveTime < 0 {
+			aliveTime = 0 * time.Second
+		}
+
+		if aliveTime.Hours() >= 1 {
+			uptime = fmt.Sprintf("%dh:%dm:%ds.%dms", int64(aliveTime.Hours()), int64(aliveTime.Minutes())%60, int64(aliveTime.Seconds())%60, int(aliveTime.Milliseconds())%1000)
+		} else if aliveTime.Minutes() >= 1 {
+			uptime = fmt.Sprintf("%dm:%ds.%dms", int(aliveTime.Minutes()), int64(aliveTime.Seconds())%60, int(aliveTime.Milliseconds())%1000)
+		} else if aliveTime.Seconds() > 0 {
+			uptime = fmt.Sprintf("%ds.%dms", int64(aliveTime.Seconds())%60, int(aliveTime.Milliseconds())%1000)
+		} else {
+			uptime = "0s"
+		}
+
+		fmt.Printf("Project: %s\tProcess: %s\t\tState: %s\t\tPID: %d\t\tUptime: %s\n", proc.Project, proc.Name, proc.Status, proc.Pid, uptime)
 	}
 }

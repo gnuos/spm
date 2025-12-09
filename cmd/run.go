@@ -47,6 +47,6 @@ func execRunCmd(cmd *cobra.Command, args []string) {
 	}
 
 	if len(res) > 0 {
-		fmt.Printf("[%s] Run %s\t[PID %d]\n", time.UnixMilli(res[0].StartAt).Format(time.RFC3339), res[0].Name, res[0].Pid)
+		fmt.Printf("%s %s::%s\t[PID %d] %s\n", res[0].StartAt.Format(time.RFC3339), res[0].Project, res[0].Name, res[0].Pid, res[0].Status)
 	}
 }
