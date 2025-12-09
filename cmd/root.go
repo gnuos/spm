@@ -2,21 +2,17 @@
 package cmd
 
 import (
-	"fmt"
 	"log"
 	"os"
 
 	"spm/pkg/config"
 	"spm/pkg/utils"
-	"spm/pkg/utils/constants"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	cwd             string
-	showVersion     bool
-	defaultProcfile string
+	showVersion bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -40,17 +36,7 @@ func Execute() {
 }
 
 func init() {
-	var err error
-
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
-	cwd, err = os.Getwd()
-	if err != nil {
-		log.Fatal(err)
-		os.Exit(1)
-	}
-
-	defaultProcfile = fmt.Sprintf("%s/Procfile", cwd)
 
 	// Configure cobra completion
 	rootCmd.CompletionOptions.HiddenDefaultCmd = false
@@ -59,9 +45,9 @@ func init() {
 
 	// Set global flags
 	rootCmd.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "Print version and exit")
-	rootCmd.PersistentFlags().StringVarP(&config.LogLevelFlag, "loglevel", "l", constants.DefaultLogLevel, "Set log Level")
-	rootCmd.PersistentFlags().StringVarP(&config.WorkDirFlag, "workdir", "w", cwd, "The path to the work directory")
-	rootCmd.PersistentFlags().StringVarP(&config.ProcfileFlag, "procfile", "p", defaultProcfile, "The path to the Procfile")
+	rootCmd.PersistentFlags().StringVarP(&config.LogLevelFlag, "loglevel", "l", "", "Set log level")
+	rootCmd.PersistentFlags().StringVarP(&config.WorkDirFlag, "workdir", "w", "", "The path to the work directory")
+	rootCmd.PersistentFlags().StringVarP(&config.ProcfileFlag, "procfile", "p", "", "The path to the Procfile")
 
 	// Register persistent function for all commands
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {

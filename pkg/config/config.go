@@ -91,6 +91,26 @@ func SetConfig(configFile string) {
 	if err != nil {
 		fmt.Println("Unable to decode into struct, ", err)
 	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
+
+	defaultProcfile := fmt.Sprintf("%s/Procfile", cwd)
+
+	if WorkDirFlag == "" {
+		WorkDirFlag = cwd
+	}
+
+	if ProcfileFlag == "" {
+		ProcfileFlag = defaultProcfile
+	}
+
+	if LogLevelFlag == "" {
+		LogLevelFlag = constants.DefaultLogLevel
+	}
 }
 
 func GetRuntimeDir(cwd string) string {
