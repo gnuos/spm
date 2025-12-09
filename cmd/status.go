@@ -11,9 +11,10 @@ import (
 )
 
 var statusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Check processed status",
-	Run:   execStatusCmd,
+	Use:     "status",
+	Short:   "Check processed status",
+	Aliases: []string{"list", "ls", "ps"},
+	Run:     execStatusCmd,
 }
 
 func init() {

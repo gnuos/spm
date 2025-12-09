@@ -11,9 +11,10 @@ import (
 )
 
 var restartCmd = &cobra.Command{
-	Use:   "restart",
-	Short: "Restart processes",
-	Run:   execRestartCmd,
+	Use:     "restart",
+	Short:   "Restart processes",
+	Aliases: []string{"rs"},
+	Run:     execRestartCmd,
 }
 
 func init() {

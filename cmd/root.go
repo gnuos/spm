@@ -21,10 +21,8 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:           utils.RuntimeModuleName,
-	Short:         utils.RuntimeModuleName + " cli",
-	SilenceErrors: true,
-	SilenceUsage:  true,
+	Use:   utils.RuntimeModuleName,
+	Short: utils.RuntimeModuleName + " cli",
 	Run: func(cmd *cobra.Command, args []string) {
 		if showVersion {
 			execVersionCmd(cmd, args)
@@ -54,8 +52,10 @@ func init() {
 
 	defaultProcfile = fmt.Sprintf("%s/Procfile", cwd)
 
-	// Configure cobra
-	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	// Configure cobra completion
+	rootCmd.CompletionOptions.HiddenDefaultCmd = false
+	rootCmd.CompletionOptions.DisableDefaultCmd = false
+	rootCmd.CompletionOptions.DisableDescriptions = false
 
 	// Set global flags
 	rootCmd.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "Print version and exit")

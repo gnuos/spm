@@ -13,9 +13,10 @@ import (
 )
 
 var daemonCmd = &cobra.Command{
-	Use:   "daemon",
-	Short: "Run supervisor as a daemon",
-	Run:   execDaemonCmd,
+	Use:     "daemon",
+	Short:   "Run supervisor as a daemon",
+	Aliases: []string{"d"},
+	Run:     execDaemonCmd,
 }
 
 func init() {

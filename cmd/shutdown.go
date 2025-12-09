@@ -13,9 +13,10 @@ import (
 )
 
 var shutdownCmd = &cobra.Command{
-	Use:   "shutdown",
-	Short: "Stop supervisor",
-	Run:   execShutdownCmd,
+	Use:     "shutdown",
+	Short:   "Stop supervisor",
+	Aliases: []string{"kill", "exit", "s"},
+	Run:     execShutdownCmd,
 }
 
 func init() {
