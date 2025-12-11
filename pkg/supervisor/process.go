@@ -252,6 +252,7 @@ func (p *Process) launchProcess(cmd *exec.Cmd) error {
 	p.Pid = cmd.Process.Pid
 	p.sysproc = cmd.Process
 	p.StartAt = time.Now()
+	p.StopAt = time.Time{}
 	p.State = codec.ProcessRunning
 
 	// 写入PID文件
@@ -272,7 +273,7 @@ func (p *Process) monitorProcess(cmd *exec.Cmd) {
 		} else {
 			ws := exitErr.Sys().(syscall.WaitStatus)
 			if ws.Signaled() {
-				p.logger.Infof("Process %s is stopped by signal: %v", p.Name, p.signal)
+				p.logger.Infof("Process %s is %v", p.Name, p.signal)
 			} else {
 				p.logger.Infof("Process %s exited with code=%d", p.Name, ws.ExitStatus())
 			}
@@ -352,10 +353,9 @@ func (p *Process) Stop() bool {
 			if err != nil && !errors.Is(err, os.ErrProcessDone) {
 				p.logger.Error(err)
 				_ = p.sysproc.Kill()
-				p.State = codec.ProcessStopped
-			} else {
-				p.State = codec.ProcessStopped
 			}
+
+			p.State = codec.ProcessStopped
 		}
 	case codec.ProcessStopped:
 		p.logger.Infof("Process %s already stopped", p.Name)

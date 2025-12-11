@@ -13,9 +13,10 @@ import (
 type Project struct {
 	mu sync.RWMutex
 
-	Name     string
-	WorkDir  string
-	Procfile string
+	Name      string
+	WorkDir   string
+	Procfile  string
+	procTable *ProcTable
 
 	running map[string]bool
 }
@@ -33,8 +34,8 @@ func (p *Project) GetState(name string) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	if _, ok := p.running[name]; ok {
-		return p.running[name]
+	if state, ok := p.running[name]; ok {
+		return state
 	}
 
 	return false
@@ -51,13 +52,25 @@ func (p *Project) GetProcNames() []string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	pList := make([]string, 0)
-
-	for n := range p.running {
-		pList = append(pList, n)
+	names := make([]string, 0)
+	for n := range p.procTable.Keys() {
+		names = append(names, n)
 	}
 
-	return pList
+	return names
+}
+
+func (p *Project) GetProcs() []*Process {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	plist := make([]*Process, 0)
+
+	for proc := range p.procTable.Values() {
+		plist = append(plist, proc)
+	}
+
+	return plist
 }
 
 func CreateProject(opt *ProcfileOption) *Project {
@@ -71,6 +84,8 @@ func CreateProject(opt *ProcfileOption) *Project {
 		WorkDir:  opt.WorkDir,
 		Procfile: opt.Procfile,
 		running:  runningTab,
+
+		procTable: NewProcTable(),
 	}
 }
 

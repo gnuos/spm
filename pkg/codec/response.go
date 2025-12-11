@@ -12,6 +12,7 @@ const (
 )
 
 type ProcInfo struct {
+	ID      int          `json:"id"`
 	Pid     int          `json:"pid"`
 	Name    string       `json:"name"`
 	Project string       `json:"project"`

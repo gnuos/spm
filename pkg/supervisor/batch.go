@@ -40,7 +40,7 @@ import (
 //
 // 创建时间: 2025-12-06
 func (sv *Supervisor) BatchDo(toDo codec.ActionCtl, opt *ProcfileOption, procs []string) []*codec.ProcInfo {
-	var doFn func(string) *Process
+	var doFn func(*Process) *Process
 	var doMany func(string) []*Process
 
 	proj, _ := sv.UpdateApp(true, opt)
@@ -69,7 +69,10 @@ func (sv *Supervisor) BatchDo(toDo codec.ActionCtl, opt *ProcfileOption, procs [
 		completed := doMany("*")
 
 		for _, p := range completed {
+			id := sv.procList.Index(p.FullName)
+
 			pInfo = append(pInfo, &codec.ProcInfo{
+				ID:      id,
 				Pid:     p.Pid,
 				Name:    p.Name,
 				Project: proj.Name,
@@ -80,9 +83,13 @@ func (sv *Supervisor) BatchDo(toDo codec.ActionCtl, opt *ProcfileOption, procs [
 		}
 	} else {
 		for _, name := range procs {
-			p := doFn(name)
+			proc := sv.GetProcByName(name)
+			p := doFn(proc)
 			if p != nil {
+				id := sv.procList.Index(p.FullName)
+
 				pInfo = append(pInfo, &codec.ProcInfo{
+					ID:      id,
 					Pid:     p.Pid,
 					Name:    p.Name,
 					Project: proj.Name,

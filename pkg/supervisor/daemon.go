@@ -140,9 +140,9 @@ func (sv *Supervisor) Daemon() {
 func (sv *Supervisor) Shutdown() {
 	_ = sv.StopAll("*")
 
-	pt := sv.procTable.Iter()
-	for _, p := range pt {
-		_ = p.logger.Sync()
+	for _, name := range sv.procList.All() {
+		proc := sv.GetProcByName(name)
+		_ = proc.logger.Sync()
 	}
 
 	sv.logger.Info("Shutdown supervisor...")

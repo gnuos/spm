@@ -32,7 +32,8 @@ type ProcessOption struct {
 	NumProcs   int      `yaml:"numProcs,omitempty"`
 	Env        []string `yaml:"env,omitempty"`
 
-	cmd []string
+	cmd   []string
+	order int
 }
 
 func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
@@ -92,13 +93,16 @@ func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
 
 	if len(procOpts.Processes) > 0 {
 		for k := range procOpts.Processes {
-			if _, ok := (*procFileCfg)[k]; !ok {
+			if _, ok := procFileCfg.Get(k); !ok {
 				delete(procOpts.Processes, k)
 			}
 		}
 	}
 
-	for name, cmd := range *procFileCfg {
+	order := 0
+	task := procFileCfg.Oldest()
+	for task != nil {
+		name, cmd := task.Key, task.Value
 		opt, ok := procOpts.Processes[name]
 		if !ok {
 			opt = &ProcessOption{}
@@ -141,6 +145,10 @@ func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
 		}
 
 		opt.cmd = append(opt.cmd, args...)
+		opt.order = order
+
+		task = task.Next()
+		order++
 	}
 
 	return procOpts, nil

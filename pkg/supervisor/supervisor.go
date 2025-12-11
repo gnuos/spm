@@ -40,6 +40,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -81,7 +82,7 @@ type Supervisor struct {
 	mu           sync.RWMutex       // 读写锁
 	logger       *zap.SugaredLogger // 日志记录器
 	projectTable *ProjectTable      // 项目表
-	procTable    *ProcTable         // 进程表
+	procList     *ProcList          // 进程列表，存放进程的顺序ID
 }
 
 // NewSupervisor 创建新的 Supervisor 实例
@@ -124,8 +125,28 @@ func NewSupervisor() *Supervisor {
 		projectTable: &ProjectTable{
 			table: make(map[string]*Project),
 		},
-		procTable: &ProcTable{
-			table: make(map[string]*Process),
-		},
+		procList: NewProcList(),
 	}
+}
+
+func (sv *Supervisor) GetProcByName(fullName string) *Process {
+	namePair := strings.Split(fullName, "::")
+	appName := namePair[0]
+	procName := namePair[1]
+
+	proj := sv.projectTable.Get(appName)
+	if p, present := proj.procTable.Get(procName); present {
+		return p
+	}
+
+	return nil
+}
+
+func (sv *Supervisor) GetProcByID(id int) *Process {
+	name, present := sv.procList.Get(id)
+	if present {
+		return sv.GetProcByName(name)
+	}
+
+	return nil
 }

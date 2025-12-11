@@ -35,11 +35,9 @@ func execStatusCmd(cmd *cobra.Command, args []string) {
 	for _, proc := range res {
 		now := time.Now()
 		aliveTime := proc.StopAt.Sub(proc.StartAt)
-		if proc.StopAt.Equal(nopTime) && !proc.StartAt.Equal(nopTime) {
+		if aliveTime < 0 && !proc.StartAt.Equal(nopTime) {
 			aliveTime = now.Sub(proc.StartAt)
-		}
-
-		if aliveTime < 0 {
+		} else {
 			aliveTime = 0 * time.Second
 		}
 
@@ -53,6 +51,6 @@ func execStatusCmd(cmd *cobra.Command, args []string) {
 			uptime = "0s"
 		}
 
-		fmt.Printf("Project: %s\tProcess: %s\t\tState: %s\t\tPID: %d\t\tUptime: %s\n", proc.Project, proc.Name, proc.Status, proc.Pid, uptime)
+		fmt.Printf("ID: %d\tProject: %s\tProcess: %s\tState: %s\tPID: %d\tUptime: %s\n", proc.ID, proc.Project, proc.Name, proc.Status, proc.Pid, uptime)
 	}
 }

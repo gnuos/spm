@@ -2,7 +2,6 @@
 package supervisor
 
 import (
-	"fmt"
 	"spm/pkg/codec"
 	"strings"
 )
@@ -31,16 +30,8 @@ import (
 //	}
 //
 // 创建时间: 2025-12-06
-func (sv *Supervisor) Status(name string) *Process {
-	sv.mu.Lock()
-	defer sv.mu.Unlock()
-
-	p := sv.procTable.Get(name)
-	if p == nil {
-		return notFoundProc
-	}
-
-	return sv.procTable.Get(name)
+func (sv *Supervisor) Status(p *Process) *Process {
+	return p
 }
 
 // forEachProcess 对指定范围的进程执行操作
@@ -57,7 +48,7 @@ func (sv *Supervisor) Status(name string) *Process {
 // 说明：
 //
 //	提取公共的进程迭代逻辑，避免代码重复
-func (sv *Supervisor) forEachProcess(appName string, operation func(string) *Process) []*Process {
+func (sv *Supervisor) forEachProcess(appName string, operation func(*Process) *Process) []*Process {
 	procs := make([]*Process, 0)
 
 	if appName != "*" {
@@ -66,15 +57,15 @@ func (sv *Supervisor) forEachProcess(appName string, operation func(string) *Pro
 			return procs
 		}
 
-		for _, name := range proj.GetProcNames() {
-			fullName := fmt.Sprintf("%s::%s", appName, name)
-			if p := operation(fullName); p != nil {
+		for _, proc := range proj.GetProcs() {
+			if p := operation(proc); p != nil {
 				procs = append(procs, p)
 			}
 		}
 	} else {
-		for name := range sv.procTable.Iter() {
-			if p := operation(name); p != nil {
+		for _, name := range sv.procList.All() {
+			proc := sv.GetProcByName(name)
+			if p := operation(proc); p != nil {
 				procs = append(procs, p)
 			}
 		}
@@ -121,16 +112,11 @@ func (sv *Supervisor) StatusAll(appName string) []*Process {
 //	if proc != nil {
 //	    fmt.Printf("进程已启动，PID: %d\n", proc.Pid)
 //	}
-func (sv *Supervisor) Start(name string) *Process {
+func (sv *Supervisor) Start(p *Process) *Process {
 	sv.mu.Lock()
 	defer sv.mu.Unlock()
 
-	p := sv.procTable.Get(name)
-	if p == nil {
-		return notFoundProc
-	}
-
-	appName := strings.Split(name, "::")[0]
+	appName := strings.Split(p.FullName, "::")[0]
 	proj := sv.projectTable.Get(appName)
 
 	if p.IsRunning() {
@@ -203,16 +189,11 @@ func (sv *Supervisor) StartAll(appName string) []*Process {
 //	if proc != nil {
 //	    fmt.Printf("进程已停止：%s\n", proc.FullName)
 //	}
-func (sv *Supervisor) Stop(name string) *Process {
+func (sv *Supervisor) Stop(p *Process) *Process {
 	sv.mu.Lock()
 	defer sv.mu.Unlock()
 
-	p := sv.procTable.Get(name)
-	if p == nil {
-		return notFoundProc
-	}
-
-	appName := strings.Split(name, "::")[0]
+	appName := strings.Split(p.FullName, "::")[0]
 	proj := sv.projectTable.Get(appName)
 
 	if p.State == codec.ProcessRunning && proj.GetState(p.Name) {
@@ -224,7 +205,7 @@ func (sv *Supervisor) Stop(name string) *Process {
 	}
 
 	if p.State == codec.ProcessStopped {
-		p.logger.Infof("%s is stopped.", p.FullName)
+		p.logger.Warnf("%s stopped already", p.FullName)
 		proj.SetState(p.Name, false)
 		return p
 	}
@@ -264,17 +245,21 @@ func (sv *Supervisor) StopAll(appName string) []*Process {
 			return make([]*Process, 0)
 		}
 
-		return sv.forEachProcess(appName, func(fullName string) *Process {
-			name := strings.Split(fullName, "::")[1]
-			if proj.GetState(name) {
-				return sv.Stop(fullName)
-			} else {
-				return notFoundProc
+		return sv.forEachProcess(appName, func(p *Process) *Process {
+			if proj.GetState(p.Name) {
+				return sv.Stop(p)
 			}
+
+			return nil
 		})
 	} else {
 		// 对于所有项目，直接调用 Stop
-		return sv.forEachProcess(appName, sv.Stop)
+		return sv.forEachProcess(appName, func(p *Process) *Process {
+			if p.State != codec.ProcessStopped {
+				return sv.Stop(p)
+			}
+			return nil
+		})
 	}
 }
 
@@ -295,9 +280,9 @@ func (sv *Supervisor) StopAll(appName string) []*Process {
 // 示例：
 //
 //	proc := sv.Restart("myapp::web-server")
-func (sv *Supervisor) Restart(name string) *Process {
-	sv.Stop(name)
-	return sv.Start(name)
+func (sv *Supervisor) Restart(p *Process) *Process {
+	sv.Stop(p)
+	return sv.Start(p)
 }
 
 // RestartAll 重启项目下所有进程

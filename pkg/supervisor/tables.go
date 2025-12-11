@@ -2,8 +2,10 @@
 package supervisor
 
 import (
-	"maps"
+	"iter"
 	"sync"
+
+	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
 
 // ProcTable 进程表，管理所有进程实例
@@ -19,7 +21,13 @@ import (
 type ProcTable struct {
 	mu sync.RWMutex
 
-	table map[string]*Process
+	table *orderedmap.OrderedMap[string, *Process]
+}
+
+func NewProcTable() *ProcTable {
+	return &ProcTable{
+		table: orderedmap.New[string, *Process](),
+	}
 }
 
 // Get 根据进程名获取进程实例
@@ -37,16 +45,11 @@ type ProcTable struct {
 // 示例：
 //
 //	proc := procTable.Get("myapp::web-server")
-func (pt *ProcTable) Get(name string) *Process {
+func (pt *ProcTable) Get(name string) (*Process, bool) {
 	pt.mu.RLock()
 	defer pt.mu.RUnlock()
 
-	p, ok := pt.table[name]
-	if ok {
-		return p
-	}
-
-	return nil
+	return pt.table.Get(name)
 }
 
 // Add 添加新进程到进程表
@@ -69,11 +72,11 @@ func (pt *ProcTable) Add(name string, proc *Process) bool {
 	pt.mu.Lock()
 	defer pt.mu.Unlock()
 
-	if _, ok := pt.table[name]; ok {
+	if _, ok := pt.table.Get(name); ok {
 		return false
 	}
 
-	pt.table[name] = proc
+	pt.table.Set(name, proc)
 
 	return true
 }
@@ -101,35 +104,139 @@ func (pt *ProcTable) Del(name string) bool {
 	pt.mu.Lock()
 	defer pt.mu.Unlock()
 
-	p, ok := pt.table[name]
-	if !ok {
+	_, ok := pt.table.Delete(name)
+
+	return ok
+}
+
+// All returns an iterator over key-value pairs from m.
+// The ordering will be oldest to newest, based on when a key was first set.
+func (pt *ProcTable) All() iter.Seq2[string, *Process] {
+	return func(yield func(string, *Process) bool) {
+		for pair := pt.table.Oldest(); pair != nil; pair = pair.Next() {
+			if !yield(pair.Key, pair.Value) {
+				return
+			}
+		}
+	}
+}
+
+// Backward returns an iterator over key-value pairs from m in reverse.
+// The ordering will be newest to oldest, based on when a key was first set.
+func (pt *ProcTable) Backward() iter.Seq2[string, *Process] {
+	return func(yield func(string, *Process) bool) {
+		for pair := pt.table.Newest(); pair != nil; pair = pair.Prev() {
+			if !yield(pair.Key, pair.Value) {
+				return
+			}
+		}
+	}
+}
+
+// Keys returns an iterator over keys in m.
+// The ordering will be oldest to newest, based on when a key was first set.
+func (pt *ProcTable) Keys() iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for pair := pt.table.Oldest(); pair != nil; pair = pair.Next() {
+			if !yield(pair.Key) {
+				return
+			}
+		}
+	}
+}
+
+// Values returns an iterator over values in m.
+// The ordering will be oldest to newest, based on when a key was first set.
+func (pt *ProcTable) Values() iter.Seq[*Process] {
+	return func(yield func(*Process) bool) {
+		for pair := pt.table.Oldest(); pair != nil; pair = pair.Next() {
+			if !yield(pair.Value) {
+				return
+			}
+		}
+	}
+}
+
+type ProcList struct {
+	mu sync.Mutex
+
+	index []int          // 全局进程序号
+	place map[string]int // 存放进程序号的位置
+	table map[int]string // 存放进程表
+}
+
+func NewProcList() *ProcList {
+	return &ProcList{
+		index: make([]int, 0),
+		place: make(map[string]int),
+		table: make(map[int]string),
+	}
+}
+
+func (pl *ProcList) Index(name string) int {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+
+	if i, ok := pl.place[name]; ok {
+		return i
+	}
+
+	return -1
+}
+
+func (pl *ProcList) Get(i int) (string, bool) {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+
+	value, ok := pl.table[i]
+
+	return value, ok
+}
+
+func (pl *ProcList) Add(name string) bool {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+
+	if _, ok := pl.place[name]; ok {
 		return false
 	}
 
-	_ = p.logger.Sync()
+	last := -1
+	if len(pl.index) > 0 {
+		last = pl.index[len(pl.index)-1]
+	}
 
-	delete(pt.table, name)
+	pl.index = append(pl.index, last+1)
+	pl.table[last+1] = name
+	pl.place[name] = last + 1
 
 	return true
 }
 
-// Iter 返回进程表的 map 引用（用于遍历）
-//
-// 返回：
-//
-//	map[string]*Process: 进程名到进程实例的映射
-//
-// 示例：
-//
-//	procs := procTable.Iter()
-//	for name, proc := range procs {
-//	    fmt.Println(name, proc.State)
-//	}
-func (pt *ProcTable) Iter() map[string]*Process {
-	pt.mu.Lock()
-	defer pt.mu.Unlock()
+func (pl *ProcList) Del(name string) bool {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
 
-	clone := maps.Clone(pt.table)
+	if _, ok := pl.place[name]; ok {
+		return false
+	}
 
-	return clone
+	i := pl.place[name]
+	delete(pl.table, i)
+	delete(pl.place, name)
+
+	return true
+}
+
+func (pl *ProcList) All() []string {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+
+	all := make([]string, 0)
+
+	for name := range pl.place {
+		all = append(all, name)
+	}
+
+	return all
 }
