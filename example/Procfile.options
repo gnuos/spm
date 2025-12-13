@@ -12,8 +12,8 @@ workDir:
 procfile:
 
 # Nullable
-env:
-    - PATH=/usr/local/bin:$PATH
+#env:
+#    - PATH=/usr/local/bin:$PATH
 
 # Nullable
 # auto generate from Procfile
@@ -23,6 +23,6 @@ processes:
         pidRoot:
         logRoot:
         # Supported signal: TERM QUIT INT
-        stopSignal: TERM
-        env:
-            - PORT=3000
+        #stopSignal: INT
+        #env:
+        #    - PORT=3000

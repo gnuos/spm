@@ -45,6 +45,7 @@ import (
 	"syscall"
 	"time"
 
+	"spm/pkg/codec"
 	"spm/pkg/logger"
 	"spm/pkg/utils"
 
@@ -139,7 +140,14 @@ func (sv *Supervisor) GetProcByName(fullName string) *Process {
 		return p
 	}
 
-	return nil
+	return &Process{
+		Pid:      -1,
+		Name:     procName,
+		FullName: fullName,
+		StartAt:  time.Time{},
+		StopAt:   time.Time{},
+		State:    codec.ProcessNotfound,
+	}
 }
 
 func (sv *Supervisor) GetProcByID(id int) *Process {
@@ -148,5 +156,12 @@ func (sv *Supervisor) GetProcByID(id int) *Process {
 		return sv.GetProcByName(name)
 	}
 
-	return nil
+	return &Process{
+		Pid:      -1,
+		Name:     strings.Split(name, "::")[1],
+		FullName: name,
+		StartAt:  time.Time{},
+		StopAt:   time.Time{},
+		State:    codec.ProcessNotfound,
+	}
 }

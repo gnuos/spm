@@ -22,10 +22,14 @@ func (se *SpmSession) dispatch(msg *codec.ActionMsg) codec.ResponseCtl {
 		}
 	case codec.ActionLog:
 		res = &codec.ResponseMsg{
-			Code:    404,
+			Code:    405,
 			Message: "Feature not implemented",
 		}
 		result = codec.ResponseMsgErr
+	case codec.ActionDump:
+		res, result = se.doDump()
+	case codec.ActionLoad:
+		res, result = se.doLoad()
 	case codec.ActionRun:
 		res = se.doRun(msg)
 		result = codec.ResponseNormal

@@ -20,7 +20,6 @@ import (
 	"spm/pkg/logger"
 	"spm/pkg/utils"
 
-	_ "github.com/k0kubun/pp/v3"
 	"go.uber.org/zap"
 )
 
@@ -30,14 +29,6 @@ var sigTable = map[string]syscall.Signal{
 	"QUIT":  syscall.SIGQUIT,
 	"STOP":  syscall.SIGSTOP,
 	"ABORT": syscall.SIGABRT,
-}
-
-var notFoundProc = &Process{
-	Pid:      -1,
-	FullName: "",
-	StartAt:  time.Time{},
-	StopAt:   time.Time{},
-	State:    codec.ProcessNotfound,
 }
 
 type Process struct {
@@ -64,7 +55,8 @@ type Process struct {
 func NewProcess(fullName string, opts *ProcessOption) *Process {
 	stopSignal, ok := sigTable[opts.StopSignal]
 	if !ok {
-		stopSignal = sigTable["TERM"]
+		// 默认用SIGINT信号关闭子进程，可以平滑退出
+		stopSignal = sigTable["INT"]
 	}
 
 	name := strings.Split(fullName, "::")[1]
@@ -190,7 +182,7 @@ func (p *Process) prepareEnvironment() error {
 
 // buildCommand 构建要执行的命令
 func (p *Process) buildCommand() (*exec.Cmd, error) {
-	task := p.Options.cmd
+	task := p.Options.Cmd
 	if len(task) == 0 {
 		return nil, fmt.Errorf("command is empty")
 	}
@@ -209,8 +201,11 @@ func (p *Process) buildCommand() (*exec.Cmd, error) {
 
 	// 构建命令
 	cmd := exec.CommandContext(p.ctx, exe, args...)
-	cmd.WaitDelay = 2 * time.Second
 	cmd.Env = append(cmd.Env, p.Options.Env...)
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
 
 	return cmd, nil
 }
@@ -273,15 +268,18 @@ func (p *Process) monitorProcess(cmd *exec.Cmd) {
 		} else {
 			ws := exitErr.Sys().(syscall.WaitStatus)
 			if ws.Signaled() {
-				p.logger.Infof("Process %s is %v", p.Name, p.signal)
+				p.logger.Infof("%v process %s ", p.signal, p.Name)
 			} else {
-				p.logger.Infof("Process %s exited with code=%d", p.Name, ws.ExitStatus())
+				p.logger.Infof("process %s exited with code=%d", p.Name, ws.ExitStatus())
 			}
 		}
 	}
 
-	p.StopAt = time.Now()
+	p.mu.Lock()
 	p.onStop()
+	p.StopAt = time.Now()
+	p.State = codec.ProcessStopped
+	p.mu.Unlock()
 }
 
 func (p *Process) Start() bool {
@@ -334,28 +332,46 @@ func (p *Process) Stop() bool {
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	defer p.onStop()
 
 	switch p.State {
 	case codec.ProcessRunning:
 		{
-			if p.cancel == nil {
-				return false
+			if p.cancel != nil {
+				p.cancel()
+
+				p.wg.Wait()
 			}
 
-			p.cancel()
-			p.wg.Wait()
-
-			p.logger.Infof("Sending %s to %d", p.Options.StopSignal, p.Pid)
 			p.State = codec.ProcessStopping
 
-			err := p.sysproc.Signal(p.signal)
-			if err != nil && !errors.Is(err, os.ErrProcessDone) {
+			timer := time.NewTimer(3 * time.Second)
+			select {
+			case <-p.ctx.Done():
+				p.logger.Infof("Process %s exited gracefully", p.Name)
+			case <-timer.C:
+				p.logger.Warnf("Process %s exited timeout", p.Name)
+			}
+
+			err := p.ctx.Err()
+			if err != nil && !errors.Is(err, context.Canceled) {
 				p.logger.Error(err)
-				_ = p.sysproc.Kill()
+			} else {
+				p.logger.Infof("Sending %s to PID %d", p.Options.StopSignal, p.Pid)
+				err = syscall.Kill(-p.Pid, p.signal)
+				if err != nil && !errors.Is(err, os.ErrProcessDone) {
+					p.logger.Error(err)
+				} else {
+					err = nil
+				}
+			}
+
+			if err != nil {
+				p.logger.Warnf("Force kill process %s", p.Name)
+				_ = syscall.Kill(-p.Pid, syscall.SIGKILL)
 			}
 
 			p.State = codec.ProcessStopped
+			p.onStop()
 		}
 	case codec.ProcessStopped:
 		p.logger.Infof("Process %s already stopped", p.Name)

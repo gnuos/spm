@@ -21,6 +21,17 @@ type Project struct {
 	running map[string]bool
 }
 
+func (p *Project) Register(name string, opt *ProcessOption) *Process {
+	fullName := fmt.Sprintf("%s::%s", p.Name, name)
+	proc := NewProcess(fullName, opt)
+	proc.SetPidPath()
+
+	p.procTable.Set(name, proc)
+	p.SetState(name, false)
+
+	return proc
+}
+
 func (p *Project) IsExist(name string) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -46,6 +57,13 @@ func (p *Project) SetState(name string, state bool) {
 	defer p.mu.Unlock()
 
 	p.running[name] = state
+}
+
+func (p *Project) Unset(name string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	delete(p.running, name)
 }
 
 func (p *Project) GetProcNames() []string {

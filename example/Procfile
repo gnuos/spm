@@ -1,2 +1,2 @@
 web: python3 app.py
-# web: uv run app.py
+#web2: uv run app.py

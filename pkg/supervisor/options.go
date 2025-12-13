@@ -17,23 +17,25 @@ import (
 var procfileViperMutex sync.Mutex
 
 type ProcfileOption struct {
-	AppName   string
-	WorkDir   string
-	Procfile  string
-	Env       []string
+	AppName  string
+	WorkDir  string
+	Procfile string
+	Env      []string `yaml:",omitempty"`
+
 	Processes map[string]*ProcessOption `yaml:"processes,omitempty"`
 }
 
 type ProcessOption struct {
-	Root       string   `yaml:"root,omitempty"`
-	PidRoot    string   `yaml:"pidRoot,omitempty"`
-	LogRoot    string   `yaml:"logRoot,omitempty"`
-	StopSignal string   `yaml:"stopSignal,omitempty"`
-	NumProcs   int      `yaml:"numProcs,omitempty"`
-	Env        []string `yaml:"env,omitempty"`
+	Cmd []string `yaml:"-"` // 配置文件里面不需要包含Cmd这个字段
+	Env []string `yaml:",omitempty"`
 
-	cmd   []string
-	order int
+	Root       string `yaml:",omitempty"`
+	PidRoot    string `yaml:"pidRoot,omitempty"`
+	LogRoot    string `yaml:"logRoot,omitempty"`
+	StopSignal string `yaml:"stopSignal,omitempty"`
+	NumProcs   int    `yaml:"numProcs,omitempty"`
+
+	Order int `yaml:"-"`
 }
 
 func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
@@ -127,7 +129,7 @@ func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
 		}
 
 		if opt.StopSignal == "" {
-			opt.StopSignal = "TERM"
+			opt.StopSignal = "INT"
 		}
 
 		parentEnv := append(config.GetConfig().Env, procOpts.Env...)
@@ -144,12 +146,14 @@ func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
 			args = strings.Split(cmd, " ")
 		}
 
-		opt.cmd = append(opt.cmd, args...)
-		opt.order = order
+		opt.Cmd = append(opt.Cmd, args...)
+		opt.Order = order
 
 		task = task.Next()
 		order++
 	}
+
+	procFileCfg = nil
 
 	return procOpts, nil
 }

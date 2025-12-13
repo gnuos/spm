@@ -226,6 +226,24 @@ func Run(workDir, procfile string, cmdLine []string) []*codec.ProcInfo {
 	return supervisor.ClientRun(msg)
 }
 
+func Dump(workDir, procfile string) []*codec.ProcInfo {
+	msg := &codec.ActionMsg{
+		Action:   codec.ActionDump,
+		WorkDir:  workDir,
+		Procfile: procfile,
+	}
+	return supervisor.ClientRun(msg)
+}
+
+func Load(workDir, procfile string) []*codec.ProcInfo {
+	msg := &codec.ActionMsg{
+		Action:   codec.ActionLoad,
+		WorkDir:  workDir,
+		Procfile: procfile,
+	}
+	return supervisor.ClientRun(msg)
+}
+
 // buildActionMsg 内部辅助函数，构建 ActionMsg 消息
 //
 // 功能：

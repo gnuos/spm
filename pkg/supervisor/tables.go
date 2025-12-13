@@ -52,6 +52,13 @@ func (pt *ProcTable) Get(name string) (*Process, bool) {
 	return pt.table.Get(name)
 }
 
+func (pt *ProcTable) Set(name string, p *Process) (*Process, bool) {
+	pt.mu.RLock()
+	defer pt.mu.RUnlock()
+
+	return pt.table.Set(name, p)
+}
+
 // Add 添加新进程到进程表
 //
 // 参数：
@@ -217,11 +224,11 @@ func (pl *ProcList) Del(name string) bool {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
-	if _, ok := pl.place[name]; ok {
+	i, ok := pl.place[name]
+	if !ok {
 		return false
 	}
 
-	i := pl.place[name]
 	delete(pl.table, i)
 	delete(pl.place, name)
 

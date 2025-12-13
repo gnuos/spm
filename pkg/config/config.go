@@ -21,6 +21,7 @@ var configViperMutex sync.Mutex
 
 type Config struct {
 	Daemonize bool
+	DumpFile  string
 	PidFile   string
 	Socket    string
 	Env       []string `yaml:",omitempty"`
@@ -39,6 +40,7 @@ type Log struct {
 
 func setDefault() {
 	viper.SetDefault("daemonize", true)
+	viper.SetDefault("dumpfile", constants.DaemonDumpFilePath)
 	viper.SetDefault("pidfile", constants.DaemonPidFilePath)
 	viper.SetDefault("socket", constants.DaemonSockFilePath)
 	viper.SetDefault("env", []string{})

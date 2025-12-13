@@ -6,6 +6,8 @@ const (
 	ActionRun ActionCtl = iota
 	ActionLog
 	ActionKill
+	ActionDump
+	ActionLoad
 	ActionStart
 	ActionStop
 	ActionStatus

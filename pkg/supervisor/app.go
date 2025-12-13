@@ -3,6 +3,7 @@ package supervisor
 
 import (
 	"fmt"
+	"spm/pkg/codec"
 )
 
 // UpdateApp 更新或注册项目及其进程
@@ -53,41 +54,36 @@ func (sv *Supervisor) UpdateApp(
 	defer sv.mu.Unlock()
 
 	newProj := CreateProject(procOpts)
+
+	// 创建一个临时的有序表，用来给进程优先级排序
+	pairs := make([]*struct {
+		name string
+		opt  *ProcessOption
+	}, len(procOpts.Processes))
+
+	for name, opt := range procOpts.Processes {
+		index := opt.Order
+		pairs[index] = &struct {
+			name string
+			opt  *ProcessOption
+		}{
+			name: name,
+			opt:  opt,
+		}
+	}
+
 	oldProj := sv.projectTable.Get(procOpts.AppName)
 	if force {
 		if oldProj == nil {
-			if len(procOpts.Processes) == 0 || procOpts.WorkDir == "" {
+			if len(pairs) == 0 || procOpts.WorkDir == "" {
 				return nil, nil
 			}
 
 			_ = sv.projectTable.Set(procOpts.AppName, newProj)
 
-			// 创建一个临时的有序表，用来给进程优先级排序
-			plist := make([]*struct {
-				name string
-				opt  *ProcessOption
-			}, len(procOpts.Processes))
-			for name, opt := range procOpts.Processes {
-				index := opt.order
-				plist[index] = &struct {
-					name string
-					opt  *ProcessOption
-				}{
-					name: name,
-					opt:  opt,
-				}
-			}
-
-			// 把整理的进程表按顺序存入有序map里面
-			for _, pair := range plist {
-				fullName := fmt.Sprintf("%s::%s", procOpts.AppName, pair.name)
-				proc := NewProcess(fullName, pair.opt)
-				proc.SetPidPath()
-
-				newProj.procTable.Add(pair.name, proc)
-				newProj.SetState(pair.name, false)
-
-				sv.procList.Add(fullName)
+			for _, pair := range pairs {
+				proc := newProj.Register(pair.name, pair.opt)
+				sv.procList.Add(proc.FullName)
 			}
 
 			return newProj, nil
@@ -97,29 +93,26 @@ func (sv *Supervisor) UpdateApp(
 			// 记录新增的进程信息
 			pList := make([]*Process, 0)
 			oldProcList := oldProj.GetProcNames()
-			newProcList := newProj.GetProcNames()
 
 			for _, name := range oldProcList {
 				if !newProj.IsExist(name) && !oldProj.GetState(name) {
 					fullName := fmt.Sprintf("%s::%s", oldProj.Name, name)
+					oldProj.Unset(name)
+					_ = oldProj.procTable.Del(name)
 					_ = sv.procList.Del(fullName)
-					delete(oldProj.running, name)
 				}
 			}
 
-			for _, name := range newProcList {
-				fullName := fmt.Sprintf("%s::%s", newProj.Name, name)
-				if exist := sv.GetProcByName(fullName); exist != nil {
+			for _, pair := range pairs {
+				fullName := fmt.Sprintf("%s::%s", newProj.Name, pair.name)
+				exist := sv.GetProcByName(fullName)
+
+				if exist != nil && exist.State != codec.ProcessNotfound {
 					continue
 				}
 
-				opt := procOpts.Processes[name]
-				proc := NewProcess(fullName, opt)
-				proc.SetPidPath()
-
-				oldProj.procTable.Add(name, proc)
+				proc := oldProj.Register(pair.name, pair.opt)
 				sv.procList.Add(fullName)
-				oldProj.SetState(name, false)
 
 				pList = append(pList, proc)
 			}

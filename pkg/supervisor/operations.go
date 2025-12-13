@@ -116,6 +116,10 @@ func (sv *Supervisor) Start(p *Process) *Process {
 	sv.mu.Lock()
 	defer sv.mu.Unlock()
 
+	if p.State == codec.ProcessNotfound {
+		return p
+	}
+
 	appName := strings.Split(p.FullName, "::")[0]
 	proj := sv.projectTable.Get(appName)
 
@@ -193,6 +197,10 @@ func (sv *Supervisor) Stop(p *Process) *Process {
 	sv.mu.Lock()
 	defer sv.mu.Unlock()
 
+	if p.State == codec.ProcessNotfound {
+		return p
+	}
+
 	appName := strings.Split(p.FullName, "::")[0]
 	proj := sv.projectTable.Get(appName)
 
@@ -212,6 +220,7 @@ func (sv *Supervisor) Stop(p *Process) *Process {
 
 	return &Process{
 		Pid:      p.Pid,
+		Name:     p.Name,
 		FullName: p.FullName,
 		StartAt:  p.StartAt,
 		StopAt:   p.StopAt,
@@ -255,7 +264,7 @@ func (sv *Supervisor) StopAll(appName string) []*Process {
 	} else {
 		// 对于所有项目，直接调用 Stop
 		return sv.forEachProcess(appName, func(p *Process) *Process {
-			if p.State != codec.ProcessStopped {
+			if p != nil && p.State != codec.ProcessStopped {
 				return sv.Stop(p)
 			}
 			return nil

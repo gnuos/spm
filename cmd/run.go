@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -20,18 +19,8 @@ var runCmd = &cobra.Command{
 }
 
 func init() {
-	runCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-		rootCmd.PersistentPreRun(cmd, args)
-		execRunPersistentPreRun()
-	}
-
+	setupCommandPreRun(runCmd, requireDaemonRunning)
 	rootCmd.AddCommand(runCmd)
-}
-
-func execRunPersistentPreRun() {
-	if !isDaemonRunning() {
-		log.Fatalln("ERROR: Supervisor has not started. Please check supervisor daemon.")
-	}
 }
 
 func execRunCmd(cmd *cobra.Command, args []string) {

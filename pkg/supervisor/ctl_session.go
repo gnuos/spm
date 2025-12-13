@@ -258,7 +258,7 @@ func (se *SpmSession) doRun(msg *codec.ActionMsg) *codec.ResponseMsg {
 		StopSignal: "TERM",
 		NumProcs:   1,
 
-		cmd: args,
+		Cmd: args,
 	}
 
 	// 第一遍注册进程
@@ -289,9 +289,9 @@ func (se *SpmSession) doAction(msg *codec.ActionMsg) *codec.ResponseMsg {
 		origProcs = []string{names}
 	}
 
-	var localProcs = make([]string, 0)
-	var infos = make([]*codec.ProcInfo, 0)
-	var procMap = make(map[string][]string)
+	localProcs := make([]string, 0)
+	procMap := make(map[string][]string)
+	infos := make([]*codec.ProcInfo, 0)
 
 	for _, n := range origProcs {
 		if strings.Contains(n, "::") {
