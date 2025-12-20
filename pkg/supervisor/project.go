@@ -22,6 +22,10 @@ type Project struct {
 }
 
 func (p *Project) Register(name string, opt *ProcessOption) *Process {
+	if opt.Order < p.procTable.table.Len() {
+		opt.Order = p.procTable.table.Len() + 1
+	}
+
 	fullName := fmt.Sprintf("%s::%s", p.Name, name)
 	proc := NewProcess(fullName, opt)
 	proc.SetPidPath()

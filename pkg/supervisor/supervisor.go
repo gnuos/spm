@@ -141,7 +141,7 @@ func (sv *Supervisor) GetProcByName(fullName string) *Process {
 	}
 
 	return &Process{
-		Pid:      -1,
+		Pid:      0,
 		Name:     procName,
 		FullName: fullName,
 		StartAt:  time.Time{},
@@ -157,7 +157,7 @@ func (sv *Supervisor) GetProcByID(id int) *Process {
 	}
 
 	return &Process{
-		Pid:      -1,
+		Pid:      0,
 		Name:     strings.Split(name, "::")[1],
 		FullName: name,
 		StartAt:  time.Time{},

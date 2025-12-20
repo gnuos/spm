@@ -35,21 +35,27 @@ type Process struct {
 	Pid      int
 	Name     string
 	FullName string
-	Options  *ProcessOption
+	PidPath  string
+	OutLog   string
+	ErrLog   string
 	StartAt  time.Time
 	StopAt   time.Time
 	State    codec.ProcessState
-	OutLog   io.WriteCloser
-	ErrLog   io.WriteCloser
 
-	wg      sync.WaitGroup
-	mu      sync.Mutex
-	ctx     context.Context
-	cancel  context.CancelFunc
+	// 进程的配置参数，不对外暴露
+	opts *ProcessOption
+
+	// 进程和goroutine上下文
+	mu     sync.Mutex
+	wg     sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	logger  *zap.SugaredLogger
 	signal  syscall.Signal
 	sysproc *os.Process
-	pidPath string
+	stdout  io.ReadWriteCloser
+	stderr  io.ReadWriteCloser
 }
 
 func NewProcess(fullName string, opts *ProcessOption) *Process {
@@ -60,16 +66,27 @@ func NewProcess(fullName string, opts *ProcessOption) *Process {
 	}
 
 	name := strings.Split(fullName, "::")[1]
+	logDir := config.GetRuntimeDir(opts.Root)
+
+	if opts.LogRoot != "" {
+		logDir = opts.LogRoot
+	}
+
+	outputLogPath := fmt.Sprintf("%s/%s_output.log", logDir, name)
+	errorLogPath := fmt.Sprintf("%s/%s_error.log", logDir, name)
 
 	return &Process{
-		Pid:      -1,
+		Pid:      0,
 		Name:     name,
 		FullName: fullName,
-		Options:  opts,
-		StartAt:  time.Time{},
-		StopAt:   time.Time{},
-		State:    codec.ProcessStandby,
+		OutLog:   outputLogPath,
+		ErrLog:   errorLogPath,
 
+		StartAt: time.Time{},
+		StopAt:  time.Time{},
+		State:   codec.ProcessStandby,
+
+		opts:   opts,
 		signal: stopSignal,
 		logger: logger.Logging(fullName),
 	}
@@ -79,45 +96,14 @@ func (p *Process) SetPidPath() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.pidPath = fmt.Sprintf("%s/%s.pid", config.GetRuntimeDir(p.Options.Root), p.Name)
+	p.PidPath = fmt.Sprintf("%s/%s.pid", config.GetRuntimeDir(p.opts.Root), p.Name)
 
-	if p.Options.PidRoot != "" {
-		info, err := os.Stat(p.Options.PidRoot)
+	if p.opts.PidRoot != "" {
+		info, err := os.Stat(p.opts.PidRoot)
 		if err == nil && info.IsDir() {
-			p.pidPath = fmt.Sprintf("%s/%s.pid", p.Options.PidRoot, p.Name)
+			p.PidPath = fmt.Sprintf("%s/%s.pid", p.opts.PidRoot, p.Name)
 		}
 	}
-}
-
-func (p *Process) SetLog() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	logDir := config.GetRuntimeDir(p.Options.Root)
-	if p.Options.LogRoot != "" {
-		logDir = p.Options.LogRoot
-	}
-
-	outputLogPath := fmt.Sprintf("%s/%s_output.log", logDir, p.Name)
-	errorLogPath := fmt.Sprintf("%s/%s_error.log", logDir, p.Name)
-
-	outLog, err := os.OpenFile(outputLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		p.logger.Error(err)
-		return err
-	}
-
-	errLog, err := os.OpenFile(errorLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		_ = outLog.Close() // 第一个文件已打开，需要关闭防止资源泄漏
-		p.logger.Error(err)
-		return err
-	}
-
-	p.OutLog = outLog
-	p.ErrLog = errLog
-
-	return nil
 }
 
 func (p *Process) IsRunning() bool {
@@ -167,22 +153,34 @@ func (p *Process) validateStart() error {
 
 // prepareEnvironment 准备启动环境（日志文件和工作目录）
 func (p *Process) prepareEnvironment() error {
-	// 每次启动都打开日志文件描述符
-	if err := p.SetLog(); err != nil {
+	// 切换到进程的工作目录
+	if err := os.Chdir(p.opts.Root); err != nil {
+		return fmt.Errorf("cannot change to working directory %s: %w", p.opts.Root, err)
+	}
+
+	outLog, err := os.OpenFile(p.OutLog, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		p.logger.Error(err)
 		return fmt.Errorf("cannot open log files: %v", err)
 	}
 
-	// 切换到进程的工作目录
-	if err := os.Chdir(p.Options.Root); err != nil {
-		return fmt.Errorf("cannot change to working directory %s: %w", p.Options.Root, err)
+	// 每次启动都打开日志文件描述符
+	errLog, err := os.OpenFile(p.ErrLog, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		_ = outLog.Close() // 第一个文件已打开，需要关闭防止资源泄漏
+		p.logger.Error(err)
+		return fmt.Errorf("cannot open log files: %v", err)
 	}
+
+	p.stdout = outLog
+	p.stderr = errLog
 
 	return nil
 }
 
 // buildCommand 构建要执行的命令
 func (p *Process) buildCommand() (*exec.Cmd, error) {
-	task := p.Options.Cmd
+	task := p.opts.Cmd
 	if len(task) == 0 {
 		return nil, fmt.Errorf("command is empty")
 	}
@@ -201,7 +199,7 @@ func (p *Process) buildCommand() (*exec.Cmd, error) {
 
 	// 构建命令
 	cmd := exec.CommandContext(p.ctx, exe, args...)
-	cmd.Env = append(cmd.Env, p.Options.Env...)
+	cmd.Env = append(cmd.Env, p.opts.Env...)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
@@ -251,7 +249,7 @@ func (p *Process) launchProcess(cmd *exec.Cmd) error {
 	p.State = codec.ProcessRunning
 
 	// 写入PID文件
-	if err := os.WriteFile(p.pidPath, []byte(strconv.Itoa(p.Pid)), 0644); err != nil {
+	if err := os.WriteFile(p.PidPath, []byte(strconv.Itoa(p.Pid)), 0644); err != nil {
 		p.logger.Error(err)
 	}
 
@@ -356,7 +354,7 @@ func (p *Process) Stop() bool {
 			if err != nil && !errors.Is(err, context.Canceled) {
 				p.logger.Error(err)
 			} else {
-				p.logger.Infof("Sending %s to PID %d", p.Options.StopSignal, p.Pid)
+				p.logger.Infof("Sending %s to PID %d", p.opts.StopSignal, p.Pid)
 				err = syscall.Kill(-p.Pid, p.signal)
 				if err != nil && !errors.Is(err, os.ErrProcessDone) {
 					p.logger.Error(err)
@@ -394,7 +392,7 @@ func (p *Process) Restart() bool {
 	}
 
 	p.mu.Lock()
-	p.Pid = -1
+	p.Pid = 0
 	p.mu.Unlock()
 
 	return p.Start()
@@ -404,7 +402,7 @@ func (p *Process) updatePid() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	pid, err := utils.ReadPid(p.pidPath)
+	pid, err := utils.ReadPid(p.PidPath)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			p.logger.Error(err)
@@ -414,7 +412,7 @@ func (p *Process) updatePid() bool {
 
 	if pid > 0 && pid != p.Pid {
 		p.Pid = pid
-		fInfo, err := os.Stat(p.pidPath)
+		fInfo, err := os.Stat(p.PidPath)
 		if err != nil {
 			p.logger.Error(err)
 			return false
@@ -431,7 +429,7 @@ func (p *Process) updatePid() bool {
 func (p *Process) onStop() {
 	p.StartAt = time.Time{}
 
-	err := os.Remove(p.pidPath)
+	err := os.Remove(p.PidPath)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			p.logger.Error(err)
@@ -445,9 +443,9 @@ func (p *Process) watchLog(logtype string, r io.ReadCloser) {
 	defer p.wg.Done()
 
 	tty := os.Stdout
-	dest := p.OutLog
+	dest := p.stdout
 	if logtype == "STDERR" {
-		dest = p.ErrLog
+		dest = p.stderr
 		tty = os.Stderr
 	}
 
