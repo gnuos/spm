@@ -102,9 +102,7 @@ func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
 	}
 
 	order := 0
-	task := procFileCfg.Oldest()
-	for task != nil {
-		name, cmd := task.Key, task.Value
+	for name, cmd := range procFileCfg.FromOldest() {
 		opt, ok := procOpts.Processes[name]
 		if !ok {
 			opt = &ProcessOption{}
@@ -149,7 +147,6 @@ func LoadProcfileOption(cwd string, procfile string) (*ProcfileOption, error) {
 		opt.Cmd = append(opt.Cmd, args...)
 		opt.Order = order
 
-		task = task.Next()
 		order++
 	}
 

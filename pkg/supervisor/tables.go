@@ -5,7 +5,7 @@ import (
 	"iter"
 	"sync"
 
-	orderedmap "github.com/wk8/go-ordered-map/v2"
+	orderedmap "github.com/gnuos/omap"
 )
 
 // ProcTable 进程表，管理所有进程实例
@@ -119,49 +119,25 @@ func (pt *ProcTable) Del(name string) bool {
 // All returns an iterator over key-value pairs from m.
 // The ordering will be oldest to newest, based on when a key was first set.
 func (pt *ProcTable) All() iter.Seq2[string, *Process] {
-	return func(yield func(string, *Process) bool) {
-		for pair := pt.table.Oldest(); pair != nil; pair = pair.Next() {
-			if !yield(pair.Key, pair.Value) {
-				return
-			}
-		}
-	}
+	return pt.table.FromOldest()
 }
 
 // Backward returns an iterator over key-value pairs from m in reverse.
 // The ordering will be newest to oldest, based on when a key was first set.
 func (pt *ProcTable) Backward() iter.Seq2[string, *Process] {
-	return func(yield func(string, *Process) bool) {
-		for pair := pt.table.Newest(); pair != nil; pair = pair.Prev() {
-			if !yield(pair.Key, pair.Value) {
-				return
-			}
-		}
-	}
+	return pt.table.FromNewest()
 }
 
 // Keys returns an iterator over keys in m.
 // The ordering will be oldest to newest, based on when a key was first set.
 func (pt *ProcTable) Keys() iter.Seq[string] {
-	return func(yield func(string) bool) {
-		for pair := pt.table.Oldest(); pair != nil; pair = pair.Next() {
-			if !yield(pair.Key) {
-				return
-			}
-		}
-	}
+	return pt.table.KeysFromOldest()
 }
 
 // Values returns an iterator over values in m.
 // The ordering will be oldest to newest, based on when a key was first set.
 func (pt *ProcTable) Values() iter.Seq[*Process] {
-	return func(yield func(*Process) bool) {
-		for pair := pt.table.Oldest(); pair != nil; pair = pair.Next() {
-			if !yield(pair.Value) {
-				return
-			}
-		}
-	}
+	return pt.table.ValuesFromOldest()
 }
 
 type ProcList struct {

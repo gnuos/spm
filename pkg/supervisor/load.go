@@ -5,18 +5,15 @@ import (
 	"spm/pkg/config"
 	"strings"
 
-	"github.com/dgraph-io/badger/v4"
 	"github.com/fxamacker/cbor/v2"
+	"github.com/gnuos/fudge"
+	"github.com/k0kubun/pp/v3"
 )
 
 func (se *SpmSession) doLoad() (*codec.ResponseMsg, codec.ResponseCtl) {
-	opt := badger.DefaultOptions(config.GetConfig().DumpFile).
-		WithValueThreshold(32).
-		WithValueLogFileSize(64 << 20).
-		WithNumCompactors(4).
-		WithNumMemtables(4)
+	dumpDB := config.GetConfig().DumpFile
 
-	db, err := badger.Open(opt)
+	db, err := fudge.Open(dumpDB, fudge.DefaultConfig)
 	if err != nil {
 		return se.errorResponse(err)
 	}
@@ -27,64 +24,64 @@ func (se *SpmSession) doLoad() (*codec.ResponseMsg, codec.ResponseCtl) {
 
 	procOpts := make(map[string]*ProcfileOption, 0)
 
-	err = db.View(func(txn *badger.Txn) error {
-		iterOpts := badger.DefaultIteratorOptions
-		iterOpts.PrefetchSize = 10
+	keys, err := db.Keys(nil, 0, 0, true)
+	if err != nil {
+		return se.errorResponse(err)
+	}
 
-		it := txn.NewIterator(iterOpts)
-		defer it.Close()
+	for _, key := range keys {
+		name := string(key)
+		metadata := struct {
+			WorkDir  string
+			Procfile string
+		}{}
 
-		for it.Rewind(); it.Valid(); it.Next() {
-			item := it.Item()
-			name := string(item.Key())
-			metadata := struct {
-				WorkDir  string
-				Procfile string
-			}{}
+		if !strings.Contains(name, "::") {
+			opt := &ProcfileOption{}
+			opt.AppName = name
+			var val []byte
+			if err := db.Get(name, &val); err != nil {
+				se.logger.Error(err)
+				opt = nil
+				continue
+			}
 
-			if !strings.Contains(name, "::") {
-				opt := &ProcfileOption{}
-				opt.AppName = name
-				err := item.Value(func(val []byte) error {
-					return cbor.Unmarshal(val, &metadata)
-				})
+			if err := cbor.Unmarshal(val, &metadata); err != nil {
+				se.logger.Error(err)
+				opt = nil
+			} else {
+				opt.WorkDir = metadata.WorkDir
+				opt.Procfile = metadata.Procfile
+				opt.Env = make([]string, 0)
+				opt.Processes = make(map[string]*ProcessOption)
 
-				if err != nil {
+				procOpts[name] = opt
+			}
+		} else {
+			namePair := strings.Split(name, "::")
+			appName := namePair[0]
+			procName := namePair[1]
+			appOpt, present := procOpts[appName]
+			if present {
+				opt := new(ProcessOption)
+				var val []byte
+				if err := db.Get(name, &val); err != nil {
 					se.logger.Error(err)
 					opt = nil
-				} else {
-					opt.WorkDir = metadata.WorkDir
-					opt.Procfile = metadata.Procfile
-					opt.Env = make([]string, 0)
-					opt.Processes = make(map[string]*ProcessOption)
-
-					procOpts[name] = opt
+					continue
 				}
-			} else {
-				namePair := strings.Split(name, "::")
-				appName := namePair[0]
-				procName := namePair[1]
-				appOpt, present := procOpts[appName]
-				if present {
-					opt := new(ProcessOption)
-					err := item.Value(func(val []byte) error {
-						return cbor.Unmarshal(val, &opt)
-					})
-					if err != nil {
-						se.logger.Error(err)
-					} else {
-						appOpt.Processes[procName] = opt
-					}
+
+				if err := cbor.Unmarshal(val, &opt); err != nil {
+					se.logger.Error(err)
+					se.errorResponse(err)
+				} else {
+					appOpt.Processes[procName] = opt
 				}
 			}
 		}
-
-		return nil
-	})
-
-	if err != nil {
-		se.errorResponse(err)
 	}
+
+	_, _ = pp.Println(procOpts)
 
 	for _, opts := range procOpts {
 		// 第一遍注册项目

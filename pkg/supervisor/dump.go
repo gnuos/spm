@@ -4,33 +4,18 @@ import (
 	"spm/pkg/codec"
 	"spm/pkg/config"
 
-	"github.com/dgraph-io/badger/v4"
+	"github.com/gnuos/fudge"
 )
 
 func (se *SpmSession) doDump() (*codec.ResponseMsg, codec.ResponseCtl) {
-	opt := badger.DefaultOptions(config.GetConfig().DumpFile).
-		WithValueThreshold(32).
-		WithValueLogFileSize(64 << 20).
-		WithNumCompactors(4).
-		WithNumMemtables(4)
-
-	db, err := badger.Open(opt)
-	if err != nil {
-		return se.errorResponse(err)
-	}
+	dumpDB := config.GetConfig().DumpFile
 
 	encoder, err := codec.GetEncoder()
 	if err != nil {
 		return se.errorResponse(err)
 	}
 
-	defer func() {
-		_ = db.Close()
-	}()
-
 	for name, proj := range se.sv.projectTable.Iter() {
-		txn := db.NewTransaction(true)
-
 		metadata, err := encoder.Marshal(struct {
 			WorkDir  string
 			Procfile string
@@ -39,45 +24,42 @@ func (se *SpmSession) doDump() (*codec.ResponseMsg, codec.ResponseCtl) {
 			Procfile: proj.Procfile,
 		})
 		if err != nil {
-			se.logger.Error(err)
-			_ = txn.Commit()
-			continue
+			return se.errorResponse(err)
 		}
 
-		err = txn.SetEntry(badger.NewEntry([]byte(name), metadata))
+		err = fudge.Set(dumpDB, name, metadata)
 		if err != nil {
-			se.logger.Error(err)
-			_ = txn.Commit()
-			continue
+			return se.errorResponse(err)
 		}
 
 		for proc := range proj.procTable.Values() {
 			opt := &ProcessOption{}
-			opt.Root = proc.Options.Root
-			opt.PidRoot = proc.Options.PidRoot
-			opt.LogRoot = proc.Options.LogRoot
-			opt.StopSignal = proc.Options.StopSignal
-			opt.NumProcs = proc.Options.NumProcs
-			opt.Env = make([]string, len(proc.Options.Env))
-			_ = copy(opt.Env, proc.Options.Env)
-			opt.Cmd = make([]string, len(proc.Options.Cmd))
-			_ = copy(opt.Cmd, proc.Options.Cmd)
-			opt.Order = proc.Options.Order
+			opt.Root = proc.opts.Root
+			opt.PidRoot = proc.opts.PidRoot
+			opt.LogRoot = proc.opts.LogRoot
+			opt.StopSignal = proc.opts.StopSignal
+			opt.NumProcs = proc.opts.NumProcs
+			opt.Env = make([]string, len(proc.opts.Env))
+			_ = copy(opt.Env, proc.opts.Env)
+			opt.Cmd = make([]string, len(proc.opts.Cmd))
+			_ = copy(opt.Cmd, proc.opts.Cmd)
+			opt.Order = proc.opts.Order
 
 			data, err := encoder.Marshal(opt)
 			if err != nil {
 				se.logger.Error(err)
 				opt = nil
 				data = nil
+				_ = fudge.Delete(dumpDB, name)
+
 				continue
 			}
 
-			err = txn.SetEntry(badger.NewEntry([]byte(proc.FullName), data))
+			err = fudge.Set(dumpDB, proc.FullName, data)
 			if err != nil {
 				se.logger.Error(err)
 			}
 		}
-		_ = txn.Commit()
 	}
 
 	return &codec.ResponseMsg{

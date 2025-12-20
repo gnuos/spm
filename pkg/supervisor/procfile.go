@@ -4,8 +4,8 @@ import (
 	"os"
 	"regexp"
 
-	orderedmap "github.com/wk8/go-ordered-map/v2"
-	"gopkg.in/yaml.v3"
+	orderedmap "github.com/gnuos/omap"
+	"go.yaml.in/yaml/v3"
 )
 
 type ProcfileConfig struct {

@@ -55,34 +55,17 @@ func (sv *Supervisor) UpdateApp(
 
 	newProj := CreateProject(procOpts)
 
-	// 创建一个临时的有序表，用来给进程优先级排序
-	pairs := make([]*struct {
-		name string
-		opt  *ProcessOption
-	}, len(procOpts.Processes))
-
-	for name, opt := range procOpts.Processes {
-		index := opt.Order
-		pairs[index] = &struct {
-			name string
-			opt  *ProcessOption
-		}{
-			name: name,
-			opt:  opt,
-		}
-	}
-
 	oldProj := sv.projectTable.Get(procOpts.AppName)
 	if force {
 		if oldProj == nil {
-			if len(pairs) == 0 || procOpts.WorkDir == "" {
+			if len(procOpts.Processes) == 0 || procOpts.WorkDir == "" {
 				return nil, nil
 			}
 
 			_ = sv.projectTable.Set(procOpts.AppName, newProj)
 
-			for _, pair := range pairs {
-				proc := newProj.Register(pair.name, pair.opt)
+			for name, opt := range procOpts.Processes {
+				proc := newProj.Register(name, opt)
 				sv.procList.Add(proc.FullName)
 			}
 
@@ -103,15 +86,15 @@ func (sv *Supervisor) UpdateApp(
 				}
 			}
 
-			for _, pair := range pairs {
-				fullName := fmt.Sprintf("%s::%s", newProj.Name, pair.name)
+			for name, opt := range procOpts.Processes {
+				fullName := fmt.Sprintf("%s::%s", newProj.Name, name)
 				exist := sv.GetProcByName(fullName)
 
 				if exist != nil && exist.State != codec.ProcessNotfound {
 					continue
 				}
 
-				proc := oldProj.Register(pair.name, pair.opt)
+				proc := oldProj.Register(name, opt)
 				sv.procList.Add(fullName)
 
 				pList = append(pList, proc)
